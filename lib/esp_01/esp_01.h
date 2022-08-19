@@ -18,4 +18,5 @@ bool esp_01_connect_wifi(uint uart, char *wifi_name, char *wifi_password);
 bool esp_01_send_http(uint uart, char *ADDRESS, char *PORT, char *command);
 bool esp_01_server_get_connections(uint uart);
 bool esp_01_server_get_connection_data(uint uart);
-bool esp_01_IPD(uint uart, char *ack, uint timeout_ms);
+uint esp_01_IPD(uint uart, char *ack, uint timeout_ms);
+bool esp_01_server_OK(uint uart, uint connection_id);

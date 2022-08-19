@@ -47,7 +47,12 @@ void app_main() {
     int16_t data[] = {0,0,0};
 
     while (true){
-        esp_01_IPD(UART_NUM_2, "OKAIS", 2000);
+        uint result = esp_01_IPD(UART_NUM_2, "HTTP/1.1", 2000);
+        if(result > 0){
+            printf("The result is : %d\n", result);
+            // send response
+            esp_01_server_OK(UART_NUM_2, 0);
+        }
         adxl345_get_axis_readings(data);
 
         printf("X= %d", data[0]);

@@ -94,6 +94,17 @@ bool sendAT(uint uart, char *command , char *ack, uint timeout_ms){
     return false;
 }
 
+bool sendAT_no_read(uint uart, char *command){
+    // put the closing tags to the command... pain in the ass
+    char command_result[strlen(command) + 2];
+    memset(command_result, 0, (strlen(command) + 2)*sizeof(char));
+    strcat(command_result, command);
+    strcat(command_result, "\r\n");
+
+    uart_write_bytes(uart, command_result, strlen(command_result));
+    return true;
+}
+
 bool init_esp_01_client(uint uart, uint enable_pin){
 
     // enable the device 
@@ -253,7 +264,7 @@ bool esp_01_server_get_connection_data(uint uart){
     return true;
 }
 
-bool esp_01_IPD(uint uart, char *ack, uint timeout_ms){
+uint esp_01_IPD(uint uart, char *ack, uint timeout_ms){
 
     char *error = "ERROR";
     uint e = 0;
@@ -261,40 +272,78 @@ bool esp_01_IPD(uint uart, char *ack, uint timeout_ms){
 
     uint u = 0;
     uint ack_length = strlen(ack);
-    
+    uint iterations = 0;
     for(uint i = 0; i < 1024; i++){
-            char* data = (char*) malloc(1+1);
-            uint result = uart_read_bytes(uart, data, 1, timeout_ms / portTICK_RATE_MS);
-            if(result == 0){
+        char* data = (char*) malloc(1+1);
+        uint result = uart_read_bytes(uart, data, 1, timeout_ms / portTICK_RATE_MS);
+        if(result == 0){
+            break;
+        }
+        printf("%c", data[0]);
+        iterations = iterations + 1;
+        // Check if ack reached
+        if(data[0] == ack[u]){
+            u++;
+            if(u == ack_length){
+                printf("\n");
+                uart_flush(uart);
+                free(data);
                 break;
             }
-            printf("%c", data[0]);
+        }else{
+            u = 0;
+        }
 
-            // Check if ack reached
-            if(data[0] == ack[u]){
-                u++;
-                if(u == ack_length){
-                    printf("\n");
-                    uart_flush(uart);
-                    free(data);
-                    return true;
-                }
-            }else{
-                u = 0;
+        if(data[0] == error[e]){
+            e++;
+            if(e == error_length){
+                printf("\n");
+                uart_flush(uart);
+                free(data);
+                break;
             }
-
-            if(data[0] == error[e]){
-                e++;
-                if(e == error_length){
-                    printf("\n");
-                    uart_flush(uart);
-                    free(data);
-                    return false;
-                }
-            }else{
-                e = 0;
-            }
-            free(data);
+        }else{
+            e = 0;
+        }
+        free(data);
     }
-    return false;
+    return iterations;
+}
+
+bool esp_01_server_OK(uint uart, uint connection_id){
+    
+    // HTTP/1.1 200 OK\r\n
+
+    // Content-Type: text/html\r\n
+
+    // Connection: close\r\n
+
+    // \r\n
+    
+    // Get the lenght of the command as a number and turn that number into string.
+    char *command = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n";
+
+    uint command_length = strlen(command); // length is: 10 + 2
+    char number[numPlaces(command_length)];                         // the lenghth of 12 is 2
+    memset(number, 0, numPlaces(command_length) * sizeof(char));    // allocate the memory for it
+    sprintf(number, "%d", command_length);                          // then convert the number into char
+
+    // get characters for the whole command
+    uint bytes_length = strlen("AT+CIPSEND=0,") + numPlaces(command_length);
+    char bytes_command[bytes_length];
+    memset(bytes_command, 0, bytes_length * sizeof(char));
+
+    strcat(bytes_command, "AT+CIPSEND=0,");
+    strcat(bytes_command, number);
+    sendAT(uart, bytes_command, "OK", 2000);
+
+    // send the actual command
+
+    sendAT(uart, command, "OK", 20000);
+
+    // sendAT_no_read(uart, command);
+
+    sendAT(uart, "AT+CIPCLOSE=0", "OK", 2000);
+
+    return true;
 }
