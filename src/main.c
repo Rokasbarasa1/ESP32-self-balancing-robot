@@ -21,6 +21,93 @@ void init_lights(){
         gpio_set_direction(GPIO_NUM_26, GPIO_MODE_OUTPUT);
 }
 
+void extract_request_values(char *request, uint request_size, uint *x, uint *y){
+    uint x_index = 1;
+    uint x_end_index = 0;
+
+    for(uint i = 1; i < request_size; i++){
+        if(request[i] == '/'){
+            x_end_index = i;
+            break;
+        }
+    }
+
+    uint y_index = x_end_index+1;
+    uint y_end_index = request_size-1;
+
+    uint x_length = x_end_index - x_index;
+    char x_substring[x_length+1];
+    strncpy(x_substring, &request[x_index], x_length);
+    x_substring[x_length] = '\0';
+    // printf("X IS : %s\n", x_substring);
+    *x = atoi(x_substring);
+
+    uint y_length = y_end_index - y_index+1;
+    char y_substring[y_length+1];
+    strncpy(y_substring, &request[y_index], y_length);
+    y_substring[y_length] = '\0';
+    // printf("Y IS : %s\n", y_substring);
+    *y = atoi(y_substring);
+
+}
+
+void manipulate_leds(uint x, uint y){
+
+    // // 32 up 25 down
+    // if(x < 40){
+    //     gpio_set_level(GPIO_NUM_25, 1);
+    //     gpio_set_level(GPIO_NUM_32, 0);
+    // }else if(x > 60){
+    //     gpio_set_level(GPIO_NUM_32, 1);
+    //     gpio_set_level(GPIO_NUM_25, 0);
+    // }else{
+    //     gpio_set_level(GPIO_NUM_25, 0);
+    //     gpio_set_level(GPIO_NUM_32, 0);
+    // }
+
+    // // 33 left 26 right
+    // if(y < 40){
+    //     gpio_set_level(GPIO_NUM_26, 1);
+    //     gpio_set_level(GPIO_NUM_33, 0);
+    // }else if(y > 60){
+    //     gpio_set_level(GPIO_NUM_33, 1);
+    //     gpio_set_level(GPIO_NUM_26, 0);
+    // }else{
+    //     gpio_set_level(GPIO_NUM_26, 0);
+    //     gpio_set_level(GPIO_NUM_33, 0);
+    // }
+
+    // blue - 32 low y
+    // red - 33 high x
+    // yellow - 25 high y
+    // green - 26 low x
+
+
+    // 32 up 25 down
+    if(x < 40){
+        gpio_set_level(GPIO_NUM_26, 1);
+        gpio_set_level(GPIO_NUM_33, 0);
+    }else if(x > 60){
+        gpio_set_level(GPIO_NUM_33, 1);
+        gpio_set_level(GPIO_NUM_26, 0);
+    }else{
+        gpio_set_level(GPIO_NUM_26, 0);
+        gpio_set_level(GPIO_NUM_33, 0);
+    }
+
+    // 33 left 26 right
+    if(y < 40){
+        gpio_set_level(GPIO_NUM_32, 1);
+        gpio_set_level(GPIO_NUM_25, 0);
+    }else if(y > 60){
+        gpio_set_level(GPIO_NUM_25, 1);
+        gpio_set_level(GPIO_NUM_32, 0);
+    }else{
+        gpio_set_level(GPIO_NUM_32, 0);
+        gpio_set_level(GPIO_NUM_25, 0);
+    }
+}
+
 void app_main() {
     gpio_set_direction(GPIO_NUM_2, GPIO_MODE_OUTPUT);
     gpio_set_level(GPIO_NUM_2, 1);
@@ -45,34 +132,47 @@ void app_main() {
 
     init_adxl345(22,21);
     int16_t data[] = {0,0,0};
-
+    uint x = 50;
+    uint y = 50;
     while (true){
-        uint result = esp_01_IPD(UART_NUM_2, "HTTP/1.1", 2000);
+        char buffer[1024];
+
+        uint result = esp_01_IPD(UART_NUM_2, "HTTP/1.1", 2000, buffer, false);
+
         if(result > 0){
-            printf("The result is : %d\n", result);
+            uint connection_id = 999;
+            uint request_size = 999;
+            char *request = esp_01_trim_response(buffer, 1024, &connection_id, &request_size);
+            esp_01_server_OK(UART_NUM_2, connection_id);
+            extract_request_values(request, request_size, &x, &y);
+            free(request);
+            printf("Transmission x:%d y:%d\n", x, y);
+            // printf("Response--------------------------\n");
+            // printf(request);
+            // printf("THe numbers are x: %d y: %d", x, y);
+
+            // printf("\nResponse--------------------------\n");
+            // printf("Connection id: %d\n", connection_id);
+
+            // printf("The result is : %d and resp is: %s\n", result, response);
             // send response
-            esp_01_server_OK(UART_NUM_2, 0);
+
+
         }
+        manipulate_leds(x, y);
+
         adxl345_get_axis_readings(data);
 
         printf("X= %d", data[0]);
         printf(" Y= %d", data[1]);
         printf(" Z= %d\n", data[2]);
         
-
         gpio_set_level(GPIO_NUM_2, 1);
-        gpio_set_level(GPIO_NUM_32, 1);
-        gpio_set_level(GPIO_NUM_33, 1);
-        gpio_set_level(GPIO_NUM_25, 1);
-        gpio_set_level(GPIO_NUM_26, 1);
-        
-        vTaskDelay(500 / portTICK_RATE_MS);
+
+        vTaskDelay(100 / portTICK_RATE_MS);
 
         gpio_set_level(GPIO_NUM_2, 0);
-        gpio_set_level(GPIO_NUM_32, 0);
-        gpio_set_level(GPIO_NUM_33, 0);
-        gpio_set_level(GPIO_NUM_25, 0);
-        gpio_set_level(GPIO_NUM_26, 0);
-        vTaskDelay(500 / portTICK_RATE_MS);
+
+        vTaskDelay(100 / portTICK_RATE_MS);
     }
 }
