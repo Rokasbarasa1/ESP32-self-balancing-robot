@@ -110,7 +110,7 @@ bool init_esp_01_client(uint uart, uint enable_pin){
     return result1 && result2 && result3;
 }
 
-bool init_esp_01_server(uint uart, uint enable_pin, char *wifi_name, char *wifi_password){
+bool init_esp_01_server(uint uart, uint enable_pin, char *wifi_name, char *wifi_password, char *server_port, char* server_ip, bool logging){
 
     // enable the device 
     gpio_set_direction(enable_pin, GPIO_MODE_OUTPUT);
@@ -137,21 +137,51 @@ bool init_esp_01_server(uint uart, uint enable_pin, char *wifi_name, char *wifi_
         uart_set_pin(uart, GPIO_NUM_17, GPIO_NUM_16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     }
 
-    bool result1 = sendAT(uart, "AT+RST", "ready", 500, true);
-    bool result2 = sendAT(uart, "AT+CWMODE=2", "OK", 500, true);
-    bool result3 = sendAT(uart, "AT+CWSAP=\"ESP32_wifi\",\"1234567890\",5,3", "OK", 500, true);
-    bool result4 = sendAT(uart, "AT+CWDHCP=0,1", "OK", 500, true); // enable dhcp
-    bool result5 = sendAT(uart, "AT+CIPMUX=1", "OK", 500, true); // set multiple connections mode for server
-    bool result6 = sendAT(uart, "AT+CIPSERVER=1,3500", "OK", 500, true); // init server with ip 3500
-    bool result7 = sendAT(uart, "AT+CIFSR", "OK", 500, true); // check ip
-    bool result8 = sendAT(uart, "AT+CIPAP=\"192.168.8.1\"", "OK", 500, true); // set the ip 
-    bool result9 = sendAT(uart, "AT+CIFSR", "OK", 500, true);// check ip
-    bool result10 = sendAT(uart, "AT+CWLIF", "OK", 500, true);// check ip
+    bool result11 = sendAT(uart, "AT+RELOAD", "ready", 20000, logging);
 
-    return result1 && result2 && result3 && result4 && result5 && result6 && result7 && result8 && result9 && result10;
+    bool result1 = sendAT(uart, "AT+RST", "ready", 500, logging);
+    bool result2 = sendAT(uart, "AT+CWMODE=2", "OK", 500, logging);
+
+    uint string1_length = strlen("AT+CWSAP=\"\",\"\",5,3") + strlen(wifi_name) + strlen(wifi_password);
+    char string1[string1_length];
+    memset(string1, 0, string1_length * sizeof(char));
+    strcat(string1, "AT+CWSAP=\"");
+    strcat(string1, wifi_name);
+    strcat(string1, "\",\"");
+    strcat(string1, wifi_password);
+    strcat(string1, "\",5,3");
+    bool result3 = sendAT(uart, string1, "OK", 500, logging);
+    // bool result3 = sendAT(uart, "AT+CWSAP=\"ESP32_wifi\",\"1234567890\",5,3", "OK", 500, true);
+    
+    bool result4 = sendAT(uart, "AT+CWDHCP=0,1", "OK", 500, logging); // enable dhcp
+    bool result5 = sendAT(uart, "AT+CIPMUX=1", "OK", 500, logging); // set multiple connections mode for server
+        
+    uint string2_length = strlen("AT+CIPSERVER=1,") + strlen(server_port);
+    char string2[string2_length];
+    memset(string2, 0, string2_length * sizeof(char));
+    strcat(string2, "AT+CIPSERVER=1,");
+    strcat(string2, server_port);
+    bool result6 = sendAT(uart, string2, "OK", 500, logging); // init server with port 3500
+    // bool result6 = sendAT(uart, "AT+CIPSERVER=1,3500", "OK", 500, true); // init server with ip 3500
+
+    bool result7 = sendAT(uart, "AT+CIFSR", "OK", 500, logging); // check ip
+
+    uint string3_length = strlen("AT+CIPAP=\"\"") + strlen(server_ip);
+    char string3[string3_length];
+    memset(string3, 0, string3_length * sizeof(char));
+    strcat(string3, "AT+CIPAP=\"");
+    strcat(string3, server_ip);
+    strcat(string3, "\"");
+    bool result8 = sendAT(uart, string3, "OK", 500, logging); // set the ip 
+    // bool result8 = sendAT(uart, "AT+CIPAP=\"192.168.8.1\"", "OK", 500, true); // set the ip 
+
+    bool result9 = sendAT(uart, "AT+CIFSR", "OK", 500, logging);// check ip
+    bool result10 = sendAT(uart, "AT+CWLIF", "OK", 500, logging);// check ip
+
+    return result1 && result2 && result3 && result4 && result5 && result6 && result7 && result8 && result9 && result10 && result11;
 }
 
-bool esp_01_connect_wifi(uint uart, char *wifi_name, char *wifi_password){
+bool esp_01_client_connect_wifi(uint uart, char *wifi_name, char *wifi_password){
     uint connect_command_length = strlen(wifi_name) + strlen(wifi_password) + 14;
     char connect_command[connect_command_length];
     memset(connect_command, 0, connect_command_length * sizeof(char));
@@ -183,7 +213,7 @@ int numPlaces (int n) {
     return 10;
 }
 
-bool esp_01_send_http(uint uart, char *ADDRESS, char *PORT, char *command){
+bool esp_01_client_send_http(uint uart, char *ADDRESS, char *PORT, char *command){
 
     // connect to the server
     // sendAT(uart1, "AT+CIPSTART=\"TCP\",\"192.168.87.178\",4000", "OK");
@@ -224,7 +254,7 @@ bool esp_01_send_http(uint uart, char *ADDRESS, char *PORT, char *command){
     return true;
 }
 
-uint esp_01_IPD(uint uart, char *ack, uint timeout_ms, char* buffer, bool logging){
+uint esp_01_server_IPD(uint uart, char *ack, uint timeout_ms, char* buffer, bool logging){
 
     char *error = "ERROR";
     uint e = 0;
@@ -234,7 +264,7 @@ uint esp_01_IPD(uint uart, char *ack, uint timeout_ms, char* buffer, bool loggin
     uint ack_length = strlen(ack);
     uint iterations = 0;
 
-    for(uint i = 0; i < 1024; i++){
+    for(uint i = 0; i < 1023; i++){
         char* data = (char*) malloc(1+1);
         uint result = uart_read_bytes(uart, data, 1, timeout_ms / portTICK_RATE_MS);
         if(result == 0){

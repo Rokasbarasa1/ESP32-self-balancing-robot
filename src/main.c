@@ -9,10 +9,15 @@
 // ESP32 DevkitC v4 // ESP-WROOM-32D
 // 160 Mhz
 
-char *wifi_name = "Stofa70521";
-char *wifi_password = "bis56lage63";
-char *server_ip = "192.168.87.178";
-char *server_port = "4000";
+// char *wifi_name = "Stofa70521";
+// char *wifi_password = "bis56lage63";
+// char *server_ip = "192.168.87.178";
+// char *server_port = "3500";
+
+char *wifi_name = "ESP32_wifi";
+char *wifi_password = "1234567890";
+char *server_ip = "192.168.8.1";
+char *server_port = "3500";
 
 void init_lights(){
         gpio_set_direction(GPIO_NUM_32, GPIO_MODE_OUTPUT);
@@ -53,30 +58,6 @@ void extract_request_values(char *request, uint request_size, uint *x, uint *y){
 
 void manipulate_leds(uint x, uint y){
 
-    // // 32 up 25 down
-    // if(x < 40){
-    //     gpio_set_level(GPIO_NUM_25, 1);
-    //     gpio_set_level(GPIO_NUM_32, 0);
-    // }else if(x > 60){
-    //     gpio_set_level(GPIO_NUM_32, 1);
-    //     gpio_set_level(GPIO_NUM_25, 0);
-    // }else{
-    //     gpio_set_level(GPIO_NUM_25, 0);
-    //     gpio_set_level(GPIO_NUM_32, 0);
-    // }
-
-    // // 33 left 26 right
-    // if(y < 40){
-    //     gpio_set_level(GPIO_NUM_26, 1);
-    //     gpio_set_level(GPIO_NUM_33, 0);
-    // }else if(y > 60){
-    //     gpio_set_level(GPIO_NUM_33, 1);
-    //     gpio_set_level(GPIO_NUM_26, 0);
-    // }else{
-    //     gpio_set_level(GPIO_NUM_26, 0);
-    //     gpio_set_level(GPIO_NUM_33, 0);
-    // }
-
     // blue - 32 low y
     // red - 33 high x
     // yellow - 25 high y
@@ -109,35 +90,25 @@ void manipulate_leds(uint x, uint y){
 }
 
 void app_main() {
+    printf("STARTING PROGRAM\n");
+    // status led
     gpio_set_direction(GPIO_NUM_2, GPIO_MODE_OUTPUT);
     gpio_set_level(GPIO_NUM_2, 1);
+
     init_lights();
-    // init_esp_01(UART_NUM_2, GPIO_NUM_19);
-    // esp_01_connect_wifi(UART_NUM_2, wifi_name, wifi_password);
-    // esp_01_send_http(
-    //     UART_NUM_2, 
-    //     server_ip, 
-    //     server_port, 
-    //     "GET /users HTTP/1.1\r\nHost: 192.168.87.178\r\n"
-    // );
 
-    // esp_01_send_http(
-    //     UART_NUM_2, 
-    //     server_ip, 
-    //     server_port, 
-    //     "GET / HTTP/1.1\r\nHost: 192.168.87.178\r\n"
-    // );
-
-    init_esp_01_server(UART_NUM_2, GPIO_NUM_19, wifi_name, wifi_password);
+    init_esp_01_server(UART_NUM_2, GPIO_NUM_19, wifi_name, wifi_password, server_port, server_ip, false);
 
     init_adxl345(22,21);
     int16_t data[] = {0,0,0};
     uint x = 50;
     uint y = 50;
+
+    printf("\n\n====START OF LOOP====\n\n");
     while (true){
         char buffer[1024];
 
-        uint result = esp_01_IPD(UART_NUM_2, "HTTP/1.1", 2000, buffer, false);
+        uint result = esp_01_server_IPD(UART_NUM_2, "HTTP/1.1", 2000, buffer, false);
 
         if(result > 0){
             uint connection_id = 999;
@@ -147,32 +118,20 @@ void app_main() {
             extract_request_values(request, request_size, &x, &y);
             free(request);
             printf("Transmission x:%d y:%d\n", x, y);
-            // printf("Response--------------------------\n");
-            // printf(request);
-            // printf("THe numbers are x: %d y: %d", x, y);
-
-            // printf("\nResponse--------------------------\n");
-            // printf("Connection id: %d\n", connection_id);
-
-            // printf("The result is : %d and resp is: %s\n", result, response);
-            // send response
-
-
         }
+        // use the information to set the leds 
         manipulate_leds(x, y);
 
+        // accelerometer
         adxl345_get_axis_readings(data);
-
         printf("X= %d", data[0]);
         printf(" Y= %d", data[1]);
         printf(" Z= %d\n", data[2]);
         
+        // status led
         gpio_set_level(GPIO_NUM_2, 1);
-
-        vTaskDelay(100 / portTICK_RATE_MS);
-
+        vTaskDelay(30 / portTICK_RATE_MS);
         gpio_set_level(GPIO_NUM_2, 0);
-
-        vTaskDelay(100 / portTICK_RATE_MS);
+        vTaskDelay(30 / portTICK_RATE_MS);
     }
 }
