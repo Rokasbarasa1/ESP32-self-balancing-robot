@@ -41,7 +41,7 @@ bool init_adxl345(uint scl_pin, uint sda_pin){
     return true;
 }
 
-void adxl345_get_axis_readings(int16_t* data){
+void adxl345_get_axis_readings_int(int16_t* data){
     uint8_t data_register[] = {0x32};
     uint8_t retrieved_data[] = {0,0,0,0,0,0};
 
@@ -67,4 +67,60 @@ void adxl345_get_axis_readings(int16_t* data){
     data[0] = X_out;
     data[1] = Y_out;
     data[2] = Z_out;
+}
+
+void adxl345_get_axis_readings_float(double* data){
+    uint8_t data_register[] = {0x32};
+    uint8_t retrieved_data[] = {0,0,0,0,0,0};
+
+    i2c_master_write_read_device(
+        I2C_MASTER_NUM, 
+        ADXL345, 
+        data_register, 
+        sizeof(data_register), 
+        retrieved_data, 
+        sizeof(retrieved_data), 
+        I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS
+    );
+
+    int16_t X, Y, Z;
+    float X_out, Y_out, Z_out;
+
+    X = (int16_t)retrieved_data[0] | ((int16_t)retrieved_data[1] << 8);
+    Y = (int16_t)retrieved_data[2] | ((int16_t)retrieved_data[3] << 8);
+    Z = (int16_t)retrieved_data[4] | ((int16_t)retrieved_data[5] << 8);
+
+    printf("X= %d Y= %d Z= %d\n", 
+        X, 
+        Y, 
+        Z
+    );
+    
+
+    X_out = ((double) X) / 256.0;
+    Y_out = ((double) Y) / 256.0;
+    Z_out = ((double) Z) / 256.0;
+
+    data[0] = X_out;
+    data[1] = Y_out;
+    data[2] = Z_out;
+}
+
+
+void calculate_pitch_and_roll(double* data, double *roll, double *pitch){
+    double x = data[0] * 9.81;
+    double y = data[1];
+    double z = data[2];
+
+    // rotation around the x axis
+    *roll = atan2f(y, z) * 180 / M_PI;
+
+    // rotation around the y axis
+    // *pitch = atan2f(x, z) * 180 / M_PI;
+
+    // can be nan
+    *pitch = asinf(x/9.81) * 180 / M_PI;
+
+    // *pitch = atan(-1 * x / sqrt(pow(y,2) + pow(z,2))) * 180 / M_PI;
+
 }

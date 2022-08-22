@@ -100,7 +100,12 @@ void app_main() {
     init_esp_01_server(UART_NUM_2, GPIO_NUM_19, wifi_name, wifi_password, server_port, server_ip, false);
 
     init_adxl345(22,21);
-    int16_t data[] = {0,0,0};
+    int16_t data_int[] = {0,0,0};
+    double data_float[] = {0,0,0};
+
+    double roll = 0;
+    double pitch = 0;
+
     uint x = 50;
     uint y = 50;
 
@@ -123,10 +128,14 @@ void app_main() {
         manipulate_leds(x, y);
 
         // accelerometer
-        adxl345_get_axis_readings(data);
-        printf("X= %d", data[0]);
-        printf(" Y= %d", data[1]);
-        printf(" Z= %d\n", data[2]);
+        // adxl345_get_axis_readings_int(data_int);
+        // printf("X= %d Y= %d Z= %d\n", data_int[0], data_int[1], data_int[2]);
+        
+        adxl345_get_axis_readings_float(data_float);
+        printf("floats X= %.4f Y= %.4f Z= %.4f\n", data_float[0], data_float[1], data_float[2]);
+        calculate_pitch_and_roll(data_float, &roll, &pitch);
+        printf("Roll: %.2f   Pitch %.2f\n", roll, pitch);
+        printf("\n");
         
         // status led
         gpio_set_level(GPIO_NUM_2, 1);
