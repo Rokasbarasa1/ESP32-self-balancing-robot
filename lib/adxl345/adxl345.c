@@ -96,7 +96,6 @@ void adxl345_get_axis_readings_float(double* data){
         Z
     );
     
-
     X_out = ((double) X) / 256.0;
     Y_out = ((double) Y) / 256.0;
     Z_out = ((double) Z) / 256.0;
@@ -116,11 +115,5 @@ void calculate_pitch_and_roll(double* data, double *roll, double *pitch){
     *roll = atan2f(y, z) * 180 / M_PI;
 
     // rotation around the y axis
-    // *pitch = atan2f(x, z) * 180 / M_PI;
-
-    // can be nan
     *pitch = asinf(x/9.81) * 180 / M_PI;
-
-    // *pitch = atan(-1 * x / sqrt(pow(y,2) + pow(z,2))) * 180 / M_PI;
-
 }
