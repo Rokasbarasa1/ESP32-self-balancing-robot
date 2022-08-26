@@ -5,6 +5,7 @@
 
 #include "../lib/esp_01/esp_01.h"
 #include "../lib/adxl345/adxl345.h"
+#include "../lib/TB6612/TB6612.h"
 
 // ESP32 DevkitC v4 // ESP-WROOM-32D
 // 160 Mhz
@@ -100,15 +101,23 @@ void app_main() {
     init_esp_01_server(UART_NUM_2, GPIO_NUM_19, wifi_name, wifi_password, server_port, server_ip, false);
 
     init_adxl345(22,21);
-    int16_t data_int[] = {0,0,0};
+    init_TB6612(12, 14, 27, 15, 0, 4);
+    change_speed_motor_B(44);
+    change_speed_motor_A(44);
+
+    // int16_t data_int[] = {0,0,0};
     double data_float[] = {0,0,0};
 
     double roll = 0;
     double pitch = 0;
 
+    // uint x = 50;
+    // uint y = 50;
+    
+    
     uint x = 50;
     uint y = 50;
-
+    
     printf("\n\n====START OF LOOP====\n\n");
     while (true){
         char buffer[1024];
@@ -126,7 +135,8 @@ void app_main() {
         }
         // use the information to set the leds 
         manipulate_leds(x, y);
-
+        change_speed_motor_B((int)x);
+        change_speed_motor_A((int)y);
         // accelerometer
         // adxl345_get_axis_readings_int(data_int);
         // printf("X= %d Y= %d Z= %d\n", data_int[0], data_int[1], data_int[2]);

@@ -4,6 +4,7 @@
         "array": "c",
         "string": "c",
         "string_view": "c",
-        "freertos.h": "c"
+        "freertos.h": "c",
+        "math.h": "c"
     }
 }
