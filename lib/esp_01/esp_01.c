@@ -110,33 +110,35 @@ bool init_esp_01_client(uint uart, uint enable_pin){
     return result1 && result2 && result3;
 }
 
-bool init_esp_01_server(uint uart, uint enable_pin, char *wifi_name, char *wifi_password, char *server_port, char* server_ip, bool logging){
+bool init_esp_01_server(uint uart, uint enable_pin, char *wifi_name, char *wifi_password, char *server_port, char* server_ip, bool logging, bool install_driver){
 
     // enable the device 
-    gpio_set_direction(enable_pin, GPIO_MODE_OUTPUT);
-    gpio_set_level(enable_pin, 1);
-    
-    const uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_APB,
-    };
+    if(install_driver){
+        gpio_set_direction(enable_pin, GPIO_MODE_OUTPUT);
+        gpio_set_level(enable_pin, 1);
+        
+        const uart_config_t uart_config = {
+            .baud_rate = 115200,
+            .data_bits = UART_DATA_8_BITS,
+            .parity = UART_PARITY_DISABLE,
+            .stop_bits = UART_STOP_BITS_1,
+            .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+            .source_clk = UART_SCLK_APB,
+        };
 
-    // We won't use a buffer for sending data.
-    uart_driver_install(uart, RX_BUF_SIZE * 2, 0, 0, NULL, 0);
-    uart_param_config(uart, &uart_config);
+        // We won't use a buffer for sending data.
+        uart_driver_install(uart, RX_BUF_SIZE * 2, 0, 0, NULL, 0);
+        uart_param_config(uart, &uart_config);
 
-    if(uart == 0){
-        uart_set_pin(uart, GPIO_NUM_17, GPIO_NUM_16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    }else if(uart == 1){
-        uart_set_pin(uart, GPIO_NUM_17, GPIO_NUM_16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    }else if(uart == 2){
-        uart_set_pin(uart, GPIO_NUM_17, GPIO_NUM_16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+        if(uart == 0){
+            uart_set_pin(uart, GPIO_NUM_17, GPIO_NUM_16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+        }else if(uart == 1){
+            uart_set_pin(uart, GPIO_NUM_17, GPIO_NUM_16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+        }else if(uart == 2){
+            uart_set_pin(uart, GPIO_NUM_17, GPIO_NUM_16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+        }
     }
-
+    
     bool result11 = sendAT(uart, "AT+RELOAD", "ready", 20000, logging);
 
     bool result1 = sendAT(uart, "AT+RST", "ready", 500, logging);
@@ -264,6 +266,10 @@ uint esp_01_server_IPD(uint uart, char *ack, uint timeout_ms, char* buffer, bool
     uint ack_length = strlen(ack);
     uint iterations = 0;
 
+    char *reset = "wdt reset";
+    uint r = 0;
+    uint reset_length = strlen(reset);
+
     for(uint i = 0; i < 1023; i++){
         char* data = (char*) malloc(1+1);
         uint result = uart_read_bytes(uart, data, 1, timeout_ms / portTICK_RATE_MS);
@@ -274,8 +280,8 @@ uint esp_01_server_IPD(uint uart, char *ack, uint timeout_ms, char* buffer, bool
             printf("%c", data[0]);
         }
         buffer[i] = data[0];
-
         iterations = iterations + 1;
+
         // Check if ack reached
         if(data[0] == ack[u]){
             u++;
@@ -283,7 +289,7 @@ uint esp_01_server_IPD(uint uart, char *ack, uint timeout_ms, char* buffer, bool
                 if(logging){
                     printf("\n");
                 }
-
+                buffer[iterations] = '\0';
                 uart_flush(uart);
                 free(data);
                 break;
@@ -299,6 +305,7 @@ uint esp_01_server_IPD(uint uart, char *ack, uint timeout_ms, char* buffer, bool
                     printf("\n");
                 }
 
+                iterations = 0;
                 uart_flush(uart);
                 free(data);
                 break;
@@ -306,9 +313,23 @@ uint esp_01_server_IPD(uint uart, char *ack, uint timeout_ms, char* buffer, bool
         }else{
             e = 0;
         }
+
+        if(data[0] == reset[r]){
+            r++;
+            if(r == reset_length){
+                printf("\nESP01 crashed: wdt reset\n");
+                
+                iterations = 9999;
+                uart_flush(uart);
+                free(data);
+                break;
+            }
+        }else{
+            r = 0;
+        }
         free(data);
     }
-    buffer[iterations] = '\0';
+    // buffer[iterations] = '\0';
     
     return iterations;
 }
@@ -425,8 +446,6 @@ char* esp_01_trim_response(char* buffer, uint buffer_size, uint *connection_id, 
 
     // convert the id substring to int and set the reference to that value
     *connection_id = atoi(id_substring);
-    // printf("\nThe string : %s\n",request_substring);
-    // printf("\nThe id : %s\n",id_substring);
 
     *request_size = request_length;
     // convert the substring of the request to allocated memory and then return it.

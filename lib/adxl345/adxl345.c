@@ -69,7 +69,7 @@ void adxl345_get_axis_readings_int(int16_t* data){
     data[2] = Z_out;
 }
 
-void adxl345_get_axis_readings_float(double* data){
+void adxl345_get_axis_readings_float(float* data){
     uint8_t data_register[] = {0x32};
     uint8_t retrieved_data[] = {0,0,0,0,0,0};
 
@@ -90,15 +90,15 @@ void adxl345_get_axis_readings_float(double* data){
     Y = (int16_t)retrieved_data[2] | ((int16_t)retrieved_data[3] << 8);
     Z = (int16_t)retrieved_data[4] | ((int16_t)retrieved_data[5] << 8);
 
-    printf("X= %d Y= %d Z= %d\n", 
-        X, 
-        Y, 
-        Z
-    );
+    // printf("X= %d Y= %d Z= %d\n", 
+    //     X, 
+    //     Y, 
+    //     Z
+    // );
     
-    X_out = ((double) X) / 256.0;
-    Y_out = ((double) Y) / 256.0;
-    Z_out = ((double) Z) / 256.0;
+    X_out = ((float) X) / 256.0;
+    Y_out = ((float) Y) / 256.0;
+    Z_out = ((float) Z) / 256.0;
 
     data[0] = X_out;
     data[1] = Y_out;
@@ -106,10 +106,10 @@ void adxl345_get_axis_readings_float(double* data){
 }
 
 
-void calculate_pitch_and_roll(double* data, double *roll, double *pitch){
-    double x = data[0] * 9.81;
-    double y = data[1];
-    double z = data[2];
+void calculate_pitch_and_roll(float* data, float *roll, float *pitch){
+    float x = data[0] * 9.81;
+    float y = data[1];
+    float z = data[2];
 
     // rotation around the x axis
     *roll = atan2f(y, z) * 180 / M_PI;

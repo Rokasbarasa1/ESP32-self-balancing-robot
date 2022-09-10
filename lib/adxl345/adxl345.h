@@ -13,5 +13,5 @@
 
 bool init_adxl345(uint scl_pin, uint sda_pin);
 void adxl345_get_axis_readings_int(int16_t* data);
-void adxl345_get_axis_readings_float(double* data);
-void calculate_pitch_and_roll(double* data, double *roll, double *pitch);
+void adxl345_get_axis_readings_float(float* data);
+void calculate_pitch_and_roll(float* data, float *roll, float *pitch);

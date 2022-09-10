@@ -9,7 +9,6 @@
 
 // ESP32 DevkitC v4 // ESP-WROOM-32D
 // 160 Mhz
-// Watchdog for tasks is disabled. 
 
 // char *wifi_name = "Stofa70521";
 // char *wifi_password = "bis56lage63";
@@ -46,14 +45,12 @@ void extract_request_values(char *request, uint request_size, uint *x, uint *y){
     char x_substring[x_length+1];
     strncpy(x_substring, &request[x_index], x_length);
     x_substring[x_length] = '\0';
-    // printf("X IS : %s\n", x_substring);
     *x = atoi(x_substring);
 
     uint y_length = y_end_index - y_index+1;
     char y_substring[y_length+1];
     strncpy(y_substring, &request[y_index], y_length);
     y_substring[y_length] = '\0';
-    // printf("Y IS : %s\n", y_substring);
     *y = atoi(y_substring);
 
 }
@@ -91,33 +88,25 @@ void manipulate_leds(uint x, uint y){
     }
 }
 
-
 void manipulate_motors(uint x, uint y){
     
-    // printf("Value of y: %d\n", (int) y);
-    // change_speed_motor_B(-60);
     if(y < 40){
-        // printf("1 The value is: %d\n", ((int)y)*2*-1);
-        change_speed_motor_B(((int)y-50)*2);
+        change_speed_motor_B(((int)y-50)*2, 30);
     }else if(y > 60){
-        // printf("2 The value is: %d\n", (((int)y)-50)*2);
-        change_speed_motor_B(((int)y-50)*2);
+        change_speed_motor_B(((int)y-50)*2, 30);
     }else{
-        change_speed_motor_B(0);
-        // printf("3 The value is: 0\n");
+        change_speed_motor_B(0, 30);
     }
 
     if(x < 40){
-        change_speed_motor_A(((int)x-50)*2);
+        change_speed_motor_A(((int)x-50)*2, 30);
     }else if(x > 60){
-        change_speed_motor_A(((int)x-50)*2);
+        change_speed_motor_A(((int)x-50)*2, 30);
     }else{
-        change_speed_motor_A(0);
-        // printf("The value is: 0");
+        change_speed_motor_A(0, 30);
     }
 }
 
-//
 void app_main() {
     printf("STARTING PROGRAM\n");
     // status led
@@ -126,73 +115,138 @@ void app_main() {
 
     // init_lights();
 
-    init_esp_01_server(UART_NUM_2, GPIO_NUM_19, wifi_name, wifi_password, server_port, server_ip, false);
-
+    // init_esp_01_server(UART_NUM_2, GPIO_NUM_19, wifi_name, wifi_password, server_port, server_ip, false, true);
     init_adxl345(22,21);
+    init_TB6612(GPIO_NUM_33,GPIO_NUM_32, GPIO_NUM_25, GPIO_NUM_27, GPIO_NUM_26, GPIO_NUM_14);
 
-    // gpio_set_direction(GPIO_NUM_26, GPIO_MODE_OUTPUT);
-    // gpio_set_level(GPIO_NUM_26, 1);
+    float acceleration_data[] = {0,0,0};
 
-    // gpio_set_direction(GPIO_NUM_27, GPIO_MODE_OUTPUT);
-    // gpio_set_level(GPIO_NUM_27, 1);
-
-    // init_TB6612(12, 14, 27, 18, 5, 4);
-    // 32, 33, 25, 26, 27, 14
-    init_TB6612(GPIO_NUM_32, GPIO_NUM_33, GPIO_NUM_25, GPIO_NUM_26, GPIO_NUM_27, GPIO_NUM_14);
-    change_speed_motor_A(-40);
-    change_speed_motor_B(40);
-
-    // int16_t data_int[] = {0,0,0};
-    double data_float[] = {0,0,0};
-
-    double roll = 0;
-    double pitch = 0;
-
-    // uint x = 50;
-    // uint y = 50;
-    
+    float roll = 0;
+    float pitch = 0;
     
     uint x = 50;
     uint y = 50;
     
+    //The goal of the PID is to reach 
+    // x = 0 (dont care about this one)
+    // y = 0 will let decide direction in which to spin wheels
+    // z = 1 how fast the wheels have to spin
+
+    float desired_accel_x = 0.0, desired_accel_y = 0.0, desired_accel_z = 1.0;
+    uint error_history_size = 20;
+    uint error_history_index = 0;
+    // proportional gain
+    float gain_p = 1;
+
+    // integration gain
+    float gain_i = 4;
+    float error_history[error_history_size];
+
+    // derivative gain
+    float gain_d = 1;
+
+    // int speed = 0;
+    // int speed_limit = 100;
+    
     printf("\n\n====START OF LOOP====\n\n");
-
     while (true){
-        char buffer[1024];
-        uint result = esp_01_server_IPD(UART_NUM_2, "HTTP/1.1", 1000, buffer, false);
+        // char buffer[1024];
+        // uint result = esp_01_server_IPD(UART_NUM_2, "HTTP/1.1", 20, buffer, false);
+ 
+        // if(result > 0 && result < 1025){
+        //     printf("result %d\n", result);
+        //     uint connection_id = 999;
+        //     uint request_size = 999;
+        //     char *request = esp_01_trim_response(buffer, 1024, &connection_id, &request_size);
+        //     esp_01_server_OK(UART_NUM_2, connection_id);
+        //     extract_request_values(request, request_size, &x, &y);
+        //     free(request);
+        //     printf("Transmission x:%d y:%d\n", x, y);
+        // }else if(result == 9999){
+        //     // this means the esp01 fucked up something. DO RESET
+        //     init_esp_01_server(UART_NUM_2, GPIO_NUM_19, wifi_name, wifi_password, server_port, server_ip, false, false);
+        // }
 
-        if(result > 0){
-            uint connection_id = 999;
-            uint request_size = 999;
-            char *request = esp_01_trim_response(buffer, 1024, &connection_id, &request_size);
-            esp_01_server_OK(UART_NUM_2, connection_id);
-            extract_request_values(request, request_size, &x, &y);
-            free(request);
-            printf("Transmission x:%d y:%d\n", x, y);
-        }
-        // use the information to set the leds 
-        // manipulate_leds(x, y);
-        manipulate_motors(x, y);
+        // manipulate_motors(x, y);
         
-        // accelerometer
-        // adxl345_get_axis_readings_int(data_int);
-        // printf("X= %d Y= %d Z= %d\n", data_int[0], data_int[1], data_int[2]);
+        // adxl345_get_axis_readings_float(acceleration_data);
+        // printf("Data X= %10.4f Y= %10.4f Z= %10.4f", acceleration_data[0], acceleration_data[1], acceleration_data[2]);
+
+        // float error_x = 0, error_y = 0, error_z = 0, total_error = 0;
+        // float error_z_p = 0, error_z_i = 0, error_z_d = 0;
+
+        // float motor_data = 0;
+        // error_x = desired_accel_x - acceleration_data[0];
+        // error_y = desired_accel_y - acceleration_data[1];
+        // // Use value of y error to set this negative or positive
+        // error_z = desired_accel_z - acceleration_data[2];
+
+        // if(error_y > 0){
+        //     error_z *= 1;
+        // }else if(error_y < 0){
+        //     error_z *= -1;
+        // }else{
+        //     error_z = 0;
+        // }
         
-        // adxl345_get_axis_readings_float(data_float);
-        // printf("floats X= %.4f Y= %.4f Z= %.4f\n", data_float[0], data_float[1], data_float[2]);
-        // calculate_pitch_and_roll(data_float, &roll, &pitch);
+        // // proportional
+        // {
+        //     error_z_p = error_z;
+        // }
+
+        // // integral
+        // {
+        //     // The order doesn't matter 
+        //     // overwriting it works good
+        //     error_history[error_history_index] = error_z;
+        //     error_history_index++;
+        //     error_history_index = error_history_index % error_history_size;
+        //     // i guess divide the sum of history by the amount of history
+        //     error_z_i = 0;
+
+        //     for(uint i = 0; i < error_history_size; i++){
+        //         error_z_i += error_history[error_history_index];
+        //     }
+
+        //     error_z_i /= error_history_size;
+        // }
+        
+
+
+        // // derivative
+        // {
+        //     error_z_d = 0;
+        // }
+
+        // // end result
+        // total_error = (gain_p * error_z_p) + (gain_i * error_z_i) + (gain_d * error_z_d);
+
+        // motor_data = total_error * 100.0;
+        // change_speed_motor_B(motor_data, 27);
+        // change_speed_motor_A(motor_data, 27);
+        // printf("          Error %10.4f  Motor value: %12.4f\n", total_error,motor_data);
+
+
+
+
+        // printf("Eik tu nahui  ");
+
+        printf("Speed\n");
+        change_speed_motor_B(100, 27);
+        change_speed_motor_A(-100, 27);
+        // speed++;
+        // speed = speed % speed_limit;
+
+
+        // calculate_pitch_and_roll(acceleration_data, &roll, &pitch);
         // printf("Roll: %.2f   Pitch %.2f\n", roll, pitch);
         // printf("\n");
-        printf("\n");
+        // printf("\n");
 
         // status led
         gpio_set_level(GPIO_NUM_2, 1);
-        // gpio_set_level(GPIO_NUM_27, 1);
-        // gpio_set_level(GPIO_NUM_26, 1);
-        vTaskDelay(30 / portTICK_RATE_MS);
+        vTaskDelay(1000 / portTICK_RATE_MS);
         gpio_set_level(GPIO_NUM_2, 0);
-        // gpio_set_level(GPIO_NUM_27, 0);
-        // gpio_set_level(GPIO_NUM_26, 0);
-        vTaskDelay(30 / portTICK_RATE_MS);
+        vTaskDelay(1000 / portTICK_RATE_MS);
     }
 }

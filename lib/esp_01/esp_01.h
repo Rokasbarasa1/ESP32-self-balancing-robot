@@ -26,7 +26,7 @@ bool init_esp_01_client(uint uart, uint enable_pin);
  * enable_pin - which gpio pin should be used as enable for the esp01
  * 
  */
-bool init_esp_01_server(uint uart, uint enable_pin, char *wifi_name, char *wifi_password, char *server_port, char* server_ip, bool logging);
+bool init_esp_01_server(uint uart, uint enable_pin, char *wifi_name, char *wifi_password, char *server_port, char* server_ip, bool logging, bool install_driver);
 bool esp_01_client_connect_wifi(uint uart, char *wifi_name, char *wifi_password);
 bool esp_01_client_send_http(uint uart, char *ADDRESS, char *PORT, char *command);
 uint esp_01_server_IPD(uint uart, char *ack, uint timeout_ms, char* buffer, bool logging);
