@@ -10,11 +10,6 @@
 // ESP32 DevkitC v4 // ESP-WROOM-32D
 // 160 Mhz
 
-// char *wifi_name = "Stofa70521";
-// char *wifi_password = "bis56lage63";
-// char *server_ip = "192.168.87.178";
-// char *server_port = "3500";
-
 char *wifi_name = "ESP32_wifi";
 char *wifi_password = "1234567890";
 char *server_ip = "192.168.8.1";
