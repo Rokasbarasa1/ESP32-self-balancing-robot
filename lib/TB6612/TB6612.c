@@ -78,39 +78,31 @@ void init_TB6612(uint motor_a_opt1, uint motor_a_opt2, uint motor_a_pwm, uint mo
 // -100 to 100
 
 // but they start spinning at 30 speed so ...
-void change_speed_motor_A(int speed, int trim_from_speed){
+void change_speed_motor_A(float speed, float trim_speed){
     if( speed < -100){
         speed = -100;
     }else if( speed > 100){
         speed = 100;
     }
 
-    float speed_float = speed;
-    if( speed < 0){
-        speed_float = speed_float * -1;
-    }
-    // convert to trim range  trim - 100
-    speed_float = ((float) trim_from_speed) + ((100 - ((float) trim_from_speed)) / (100 - 0)) * (speed_float - 0);
-    // printf("Trim: %d %.2f", speed, speed_float);
-    if( speed < 0){
-        speed_float = speed_float * -1;
-    }
-
     if(speed > 0){
+        speed = (trim_speed) + ((100 - (trim_speed)) / (100 - 0)) * (speed - 0);
+
         // forward
         gpio_set_level(a1, 1);
         gpio_set_level(a2, 0);
         
         // set pwm
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, 0, (int)((pow(2.0, 13.0) - 1.0) * (speed_float / 100.0)));
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, 0, (int)((pow(2.0, 13.0) - 1.0) * (speed / 100.0)));
     }else if(speed < 0){
+        speed = ((trim_speed) + ((100 - (trim_speed)) / (100 - 0)) * ((speed * -1) - 0)) * -1;
+
         // reverse
         gpio_set_level(a1, 0);
         gpio_set_level(a2, 1);
 
-
         // set pwm
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, 0, (int)((pow(2.0, 13.0) - 1.0) * ((speed_float * -1) / 100.0)));
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, 0, (int)((pow(2.0, 13.0) - 1.0) * ((speed * -1) / 100.0)));
     }else{
         gpio_set_level(a1, 0);
         gpio_set_level(a2, 0);
@@ -120,44 +112,36 @@ void change_speed_motor_A(int speed, int trim_from_speed){
     ledc_update_duty(LEDC_LOW_SPEED_MODE, 0);
 }
 
-void change_speed_motor_B(int speed, int trim_from_speed){
+void change_speed_motor_B(float speed, float trim_speed){
     if( speed < -100){
         speed = -100;
     }else if( speed > 100){
         speed = 100;
     }
 
-    float speed_float = speed;
-
-    if( speed < 0){
-        speed_float = speed_float * -1;
-    }
-    // convert to trim range  trim - 100
-    speed_float = ((float) trim_from_speed) + ((100 - ((float) trim_from_speed)) / (100 - 0)) * (speed_float - 0);
-    // printf("Trim: %d %.2f", speed, speed_float);
-    if( speed < 0){
-        speed_float = speed_float * -1;
-    }
-
     if(speed > 0){
+        speed = (trim_speed) + ((100 - (trim_speed)) / (100 - 0)) * (speed - 0);
+
         // forward
         gpio_set_level(b1, 1);
         gpio_set_level(b2, 0);
 
         // set pwm
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, 1, (int)((pow(2.0, 13.0) - 1.0) * (speed_float / 100.0)));
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, 1, (int)((pow(2.0, 13.0) - 1.0) * (speed / 100.0)));
 
     }else if(speed < 0){
+        speed = ((trim_speed) + ((100 - (trim_speed)) / (100 - 0)) * ((speed * -1) - 0)) * -1;
+
         // reverse
         gpio_set_level(b1, 0);
         gpio_set_level(b2, 1);
+
         // set pwm
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, 1, (int)((pow(2.0, 13.0) - 1.0) * ((speed_float * -1) / 100.0)));
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, 1, (int)((pow(2.0, 13.0) - 1.0) * ((speed * -1) / 100.0)));
     }else{
         gpio_set_level(b1, 0);
         gpio_set_level(b2, 0);
         ledc_set_duty(LEDC_LOW_SPEED_MODE, 1, 0);
-
     }
 
     ledc_update_duty(LEDC_LOW_SPEED_MODE, 1);

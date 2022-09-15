@@ -35,6 +35,7 @@ bool init_adxl345(uint scl_pin, uint sda_pin){
 
     // calibration
     i2c_master_write_to_device(I2C_MASTER_NUM, ADXL345, dataInit, sizeof(dataInit), I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+
     i2c_master_write_to_device(I2C_MASTER_NUM, ADXL345, x_calibration, sizeof(dataInit), I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
     i2c_master_write_to_device(I2C_MASTER_NUM, ADXL345, y_calibration, sizeof(dataInit), I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
     i2c_master_write_to_device(I2C_MASTER_NUM, ADXL345, z_calibration, sizeof(dataInit), I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);

@@ -128,17 +128,19 @@ void app_main() {
     // z = 1 how fast the wheels have to spin
 
     float desired_accel_x = 0.0, desired_accel_y = 0.0, desired_accel_z = 1.0;
-    uint error_history_size = 20;
     uint error_history_index = 0;
+
     // proportional gain
-    float gain_p = 1;
+    float gain_p = 0.9;
 
     // integration gain
-    float gain_i = 4;
+    float gain_i = 0.2;
+    uint error_history_size = 20;
+
     float error_history[error_history_size];
 
     // derivative gain
-    float gain_d = 1;
+    float gain_d = 0;
 
     // int speed = 0;
     // int speed_limit = 100;
@@ -164,71 +166,74 @@ void app_main() {
 
         // manipulate_motors(x, y);
         
-        // adxl345_get_axis_readings_float(acceleration_data);
-        // printf("Data X= %10.4f Y= %10.4f Z= %10.4f", acceleration_data[0], acceleration_data[1], acceleration_data[2]);
+        adxl345_get_axis_readings_float(acceleration_data);
+        printf("ACCEL, %10.4f, %10.4f, %10.4f, ", acceleration_data[0], acceleration_data[1], acceleration_data[2]);
 
-        // float error_x = 0, error_y = 0, error_z = 0, total_error = 0;
-        // float error_z_p = 0, error_z_i = 0, error_z_d = 0;
+        float error_x = 0, error_y = 0, error_z = 0, total_error = 0;
+        float error_z_p = 0, error_z_i = 0, error_z_d = 0;
 
-        // float motor_data = 0;
-        // error_x = desired_accel_x - acceleration_data[0];
-        // error_y = desired_accel_y - acceleration_data[1];
-        // // Use value of y error to set this negative or positive
-        // error_z = desired_accel_z - acceleration_data[2];
+        float motor_data = 0;
+        error_x = desired_accel_x - acceleration_data[0];
+        error_y = desired_accel_y - acceleration_data[1];
+        // Use value of y error to set this negative or positive
+        error_z = desired_accel_z - acceleration_data[2];
 
-        // if(error_y > 0){
-        //     error_z *= 1;
-        // }else if(error_y < 0){
-        //     error_z *= -1;
-        // }else{
-        //     error_z = 0;
-        // }
+        if(error_y > 0){
+            error_z *= 1;
+        }else if(error_y < 0){
+            error_z *= -1;
+        }else{
+            error_z = 0;
+        }
         
-        // // proportional
-        // {
-        //     error_z_p = error_z;
-        // }
+        // proportional
+        {
+            error_z_p = error_z;
+        }
 
-        // // integral
-        // {
-        //     // The order doesn't matter 
-        //     // overwriting it works good
-        //     error_history[error_history_index] = error_z;
-        //     error_history_index++;
-        //     error_history_index = error_history_index % error_history_size;
-        //     // i guess divide the sum of history by the amount of history
-        //     error_z_i = 0;
+        // integral
+        // TODO: implement clamping for integral saturation
+        {
+            // The order doesn't matter 
+            // overwriting it works good
+            error_history[error_history_index] = error_z;
+            error_history_index++;
+            error_history_index = error_history_index % error_history_size;
+            // i guess divide the sum of history by the amount of history
+            error_z_i = 0;
 
-        //     for(uint i = 0; i < error_history_size; i++){
-        //         error_z_i += error_history[error_history_index];
-        //     }
+            for(uint i = 0; i < error_history_size; i++){
+                error_z_i += error_history[error_history_index];
+            }
 
-        //     error_z_i /= error_history_size;
-        // }
+            error_z_i = error_z_i / error_history_size;
+        }
         
 
 
-        // // derivative
-        // {
-        //     error_z_d = 0;
-        // }
+        // derivative
+        {
+            error_z_d = 0;
+        }
 
-        // // end result
-        // total_error = (gain_p * error_z_p) + (gain_i * error_z_i) + (gain_d * error_z_d);
+        // end result
+        total_error = (gain_p * error_z_p) + (gain_i * error_z_i) + (gain_d * error_z_d);
+        // printf("    %10.2f = %10.2f + %10.2f + %10.2f    ",total_error, (gain_p * error_z_p), (gain_i * error_z_i), (gain_d * error_z_d));
 
-        // motor_data = total_error * 100.0;
-        // change_speed_motor_B(motor_data, 27);
-        // change_speed_motor_A(motor_data, 27);
-        // printf("          Error %10.4f  Motor value: %12.4f\n", total_error,motor_data);
+
+        motor_data = total_error * 100.0;
+        change_speed_motor_B(motor_data, 27);
+        change_speed_motor_A(motor_data, 27);
+        printf("          Error %10.4f  Motor value: %12.4f\n", total_error,motor_data);
 
 
 
 
         // printf("Eik tu nahui  ");
 
-        printf("Speed\n");
-        change_speed_motor_B(100, 27);
-        change_speed_motor_A(-100, 27);
+        // printf("Speed\n");
+        // change_speed_motor_B(100, 27);
+        // change_speed_motor_A(-100, 27);
         // speed++;
         // speed = speed % speed_limit;
 
@@ -240,8 +245,8 @@ void app_main() {
 
         // status led
         gpio_set_level(GPIO_NUM_2, 1);
-        vTaskDelay(1000 / portTICK_RATE_MS);
+        vTaskDelay(10 / portTICK_RATE_MS);
         gpio_set_level(GPIO_NUM_2, 0);
-        vTaskDelay(1000 / portTICK_RATE_MS);
+        vTaskDelay(10 / portTICK_RATE_MS);
     }
 }
