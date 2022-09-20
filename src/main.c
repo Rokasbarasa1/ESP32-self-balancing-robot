@@ -4,7 +4,8 @@
 #include <freertos/task.h>
 
 #include "../lib/esp_01/esp_01.h"
-#include "../lib/adxl345/adxl345.h"
+// #include "../lib/adxl345/adxl345.h"
+#include "../lib/mpu6050/mpu6050.h"
 #include "../lib/TB6612/TB6612.h"
 
 // ESP32 DevkitC v4 // ESP-WROOM-32D
@@ -108,79 +109,51 @@ void app_main() {
     gpio_set_direction(GPIO_NUM_2, GPIO_MODE_OUTPUT);
     gpio_set_level(GPIO_NUM_2, 1);
 
-    // init_lights();
-
-    // init_esp_01_server(UART_NUM_2, GPIO_NUM_19, wifi_name, wifi_password, server_port, server_ip, false, true);
-    init_adxl345(22,21);
+    init_mpu6050(22,21);
     init_TB6612(GPIO_NUM_33,GPIO_NUM_32, GPIO_NUM_25, GPIO_NUM_27, GPIO_NUM_26, GPIO_NUM_14);
 
     float acceleration_data[] = {0,0,0};
+    float gyro_data[] = {0,0,0};
 
-    float roll = 0;
-    float pitch = 0;
-    
-    uint x = 50;
-    uint y = 50;
-    
     //The goal of the PID is to reach 
     // x = 0 (dont care about this one)
     // y = 0 will let decide direction in which to spin wheels
     // z = 1 how fast the wheels have to spin
 
     float desired_accel_x = 0.0, desired_accel_y = 0.0, desired_accel_z = 1.0;
-    uint error_history_index = 0;
 
     // proportional gain
-    float gain_p = 0.9;
+    float gain_p = 1;
 
     // integration gain
-    float gain_i = 0.2;
-    uint error_history_size = 20;
-
-    float error_history[error_history_size];
+    float gain_i = 0.3;
+    float integral_sum = 0.0;
 
     // derivative gain
     float gain_d = 0;
 
-    // int speed = 0;
-    // int speed_limit = 100;
     
     printf("\n\n====START OF LOOP====\n\n");
     while (true){
-        // char buffer[1024];
-        // uint result = esp_01_server_IPD(UART_NUM_2, "HTTP/1.1", 20, buffer, false);
- 
-        // if(result > 0 && result < 1025){
-        //     printf("result %d\n", result);
-        //     uint connection_id = 999;
-        //     uint request_size = 999;
-        //     char *request = esp_01_trim_response(buffer, 1024, &connection_id, &request_size);
-        //     esp_01_server_OK(UART_NUM_2, connection_id);
-        //     extract_request_values(request, request_size, &x, &y);
-        //     free(request);
-        //     printf("Transmission x:%d y:%d\n", x, y);
-        // }else if(result == 9999){
-        //     // this means the esp01 fucked up something. DO RESET
-        //     init_esp_01_server(UART_NUM_2, GPIO_NUM_19, wifi_name, wifi_password, server_port, server_ip, false, false);
-        // }
+        mpu6050_accelerometer_readings_float(acceleration_data);
+        printf("ACCEL, %6.2f, %6.2f, %6.2f, ", acceleration_data[0], acceleration_data[1], acceleration_data[2]);
+        // printf("%f\n", acceleration_data[2]);
 
-        // manipulate_motors(x, y);
-        
-        adxl345_get_axis_readings_float(acceleration_data);
-        printf("ACCEL, %10.4f, %10.4f, %10.4f, ", acceleration_data[0], acceleration_data[1], acceleration_data[2]);
+        // mpu6050_gyro_readings_float(gyro_data);
+        // printf("GYRO, %6.2f, %6.2f, %6.2f, ", gyro_data[0], gyro_data[1], gyro_data[2]);
 
         float error_x = 0, error_y = 0, error_z = 0, total_error = 0;
         float error_z_p = 0, error_z_i = 0, error_z_d = 0;
 
         float motor_data = 0;
-        error_x = desired_accel_x - acceleration_data[0];
-        error_y = desired_accel_y - acceleration_data[1];
+        error_x = desired_accel_x - acceleration_data[0]; // for mpu6050 use x axis
+        error_y = desired_accel_y - acceleration_data[1]; // for adxl345 use the y axis of accelerometer
         // Use value of y error to set this negative or positive
         error_z = desired_accel_z - acceleration_data[2];
 
-        if(error_y > 0){
+        if(error_x > 0){
             error_z *= 1;
-        }else if(error_y < 0){
+        }else if(error_x < 0){
             error_z *= -1;
         }else{
             error_z = 0;
@@ -192,24 +165,16 @@ void app_main() {
         }
 
         // integral
-        // TODO: implement clamping for integral saturation
         {
-            // The order doesn't matter 
-            // overwriting it works good
-            error_history[error_history_index] = error_z;
-            error_history_index++;
-            error_history_index = error_history_index % error_history_size;
-            // i guess divide the sum of history by the amount of history
-            error_z_i = 0;
-
-            for(uint i = 0; i < error_history_size; i++){
-                error_z_i += error_history[error_history_index];
+            integral_sum += error_z;
+            // clamp the integral if it is getting out of bounds
+            if(integral_sum > 1.0){
+                integral_sum = 1.0;
+            }else if(integral_sum < -1.0){
+                integral_sum = -1.0;
             }
-
-            error_z_i = error_z_i / error_history_size;
+            error_z_i = integral_sum;
         }
-        
-
 
         // derivative
         {
@@ -218,35 +183,18 @@ void app_main() {
 
         // end result
         total_error = (gain_p * error_z_p) + (gain_i * error_z_i) + (gain_d * error_z_d);
-        // printf("    %10.2f = %10.2f + %10.2f + %10.2f    ",total_error, (gain_p * error_z_p), (gain_i * error_z_i), (gain_d * error_z_d));
+        printf("    %10.2f = %10.2f + %10.2f + %10.2f    ",total_error, (gain_p * error_z_p), (gain_i * error_z_i), (gain_d * error_z_d));
 
 
         motor_data = total_error * 100.0;
-        change_speed_motor_B(motor_data, 27);
-        change_speed_motor_A(motor_data, 27);
-        printf("          Error %10.4f  Motor value: %12.4f\n", total_error,motor_data);
-
-
-
-
-        // printf("Eik tu nahui  ");
-
-        // printf("Speed\n");
-        // change_speed_motor_B(100, 27);
-        // change_speed_motor_A(-100, 27);
-        // speed++;
-        // speed = speed % speed_limit;
-
-
-        // calculate_pitch_and_roll(acceleration_data, &roll, &pitch);
-        // printf("Roll: %.2f   Pitch %.2f\n", roll, pitch);
-        // printf("\n");
-        // printf("\n");
+        change_speed_motor_B(motor_data, 23);
+        change_speed_motor_A(motor_data, 23);
+        printf("          Error %10.2f  Motor value: %12.2f\n", total_error,motor_data);
 
         // status led
         gpio_set_level(GPIO_NUM_2, 1);
-        vTaskDelay(10 / portTICK_RATE_MS);
+        vTaskDelay(1 / portTICK_RATE_MS);
         gpio_set_level(GPIO_NUM_2, 0);
-        vTaskDelay(10 / portTICK_RATE_MS);
+        vTaskDelay(1 / portTICK_RATE_MS);
     }
 }

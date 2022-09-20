@@ -7,6 +7,8 @@
         "freertos.h": "c",
         "math.h": "c",
         "tb6612.h": "c",
-        "rtc_wdt.h": "c"
+        "rtc_wdt.h": "c",
+        "mpu6050.h": "c",
+        "adxl345.h": "c"
     }
 }
