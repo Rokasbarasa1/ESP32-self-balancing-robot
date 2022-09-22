@@ -106,9 +106,9 @@ void mpu6050_accelerometer_readings_float(float* data){
     Y_out = ((float) Y) / 16384.0;
     Z_out = ((float) Z) / 16384.0;
 
-    data[0] = X_out - 0.044813556;
-    data[1] = Y_out - 0.002349317;
-    data[2] = Z_out + 0.035772152;
+    data[0] = X_out - 0.076622;
+    data[1] = Y_out - 0.009298;
+    data[2] = Z_out + 0.036924;
 }
 
 void mpu6050_gyro_readings_float(float* data){
@@ -136,9 +136,9 @@ void mpu6050_gyro_readings_float(float* data){
     Y_out = ((float) Y) / 131.0;
     Z_out = ((float) Z) / 131.0;
 
-    data[0] = X_out;
-    data[1] = Y_out;
-    data[2] = Z_out;
+    data[0] = X_out + 0.096947;
+    data[1] = Y_out + 4.177492;
+    data[2] = Z_out - 0.440870;
 }
 
 
@@ -153,4 +153,51 @@ void calculate_pitch_and_roll(float* data, float *roll, float *pitch){
 
     // rotation around the y axis
     *pitch = asinf(x/9.81) * 180 / M_PI;
+}
+
+void find_accelerometer_error(uint sample_size){
+
+    float x_sum = 0, y_sum = 0, z_sum = 0;
+    float data[] = {0,0,0};
+    
+    for(uint i = 0; i < sample_size ; i++){
+        mpu6050_accelerometer_readings_float(data);
+        x_sum += data[0];
+        y_sum += data[1];
+        z_sum += data[2];
+        // It can sample stuff at 1KHz
+        // but 0.5Khz is just to be safe
+        vTaskDelay(2 / portTICK_RATE_MS);
+    }
+
+    printf(
+        "ACCELEROMETER errors: X: %f   Y: %f   Z: %f\n", 
+        x_sum/sample_size, 
+        y_sum/sample_size, 
+        z_sum/sample_size
+    );
+}
+
+void find_gyro_error(uint sample_size){
+
+    float x_sum = 0, y_sum = 0, z_sum = 0;
+    float data[] = {0,0,0};
+    
+    for(uint i = 0; i < sample_size ; i++){
+        mpu6050_gyro_readings_float(data);
+
+        x_sum += data[0];
+        y_sum += data[1];
+        z_sum += data[2];
+        // It can sample stuff at 1KHz
+        // but 0.5Khz is just to be safe
+        vTaskDelay(2 / portTICK_RATE_MS);
+    }
+
+    printf(
+        "GYRO errors: X: %f   Y: %f   Z: %f\n", 
+        x_sum/sample_size, 
+        y_sum/sample_size, 
+        z_sum/sample_size
+    );
 }
