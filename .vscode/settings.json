@@ -9,6 +9,9 @@
         "tb6612.h": "c",
         "rtc_wdt.h": "c",
         "mpu6050.h": "c",
-        "adxl345.h": "c"
+        "adxl345.h": "c",
+        "cmath": "c",
+        "random": "c",
+        "task.h": "c"
     }
 }

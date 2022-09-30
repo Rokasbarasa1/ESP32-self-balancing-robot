@@ -119,23 +119,28 @@ void mpu6050_gyro_readings_float(float* data){
     Y_out = ((float) Y) / 131.0;
     Z_out = ((float) Z) / 131.0;
 
-    data[0] = X_out + 0.096947;
-    data[1] = Y_out + 4.177492;
-    data[2] = Z_out - 0.440870;
+    data[0] = X_out;// + 0.096947;
+    data[1] = Y_out;// + 4.177492;
+    data[2] = Z_out;// - 0.440870;
 }
 
 
 void calculate_pitch_and_roll(float* data, float *roll, float *pitch){
 
-    float x = data[0] * 9.81;
+    float x = data[0];
     float y = data[1];
     float z = data[2];
 
+    float acc_vector_length = sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2));
+    x = x /acc_vector_length;
+    y = y /acc_vector_length;
+    z = z /acc_vector_length;
+
     // rotation around the x axis
-    *roll = atan2f(y, z) * 180 / M_PI;
+    *roll = atan2f(y, z) * (180 / M_PI);
 
     // rotation around the y axis
-    *pitch = asinf(x/9.81) * 180 / M_PI;
+    *pitch = asinf(x) * (180 / M_PI);
 }
 
 void find_accelerometer_error(uint sample_size){

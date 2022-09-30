@@ -59,11 +59,8 @@ void adxl345_get_axis_readings_int(int16_t* data){
     int16_t X_out, Y_out, Z_out;
 
     X_out = (int16_t)retrieved_data[0] | ((int16_t)retrieved_data[1] << 8);
-    // X_out = X_out/256;
     Y_out = (int16_t)retrieved_data[2] | ((int16_t)retrieved_data[3] << 8);
-    // Y_out = Y_out/256;
     Z_out = (int16_t)retrieved_data[4] | ((int16_t)retrieved_data[5] << 8);
-    // Z_out = Z_out/256;
 
     data[0] = X_out;
     data[1] = Y_out;
@@ -90,12 +87,6 @@ void adxl345_get_axis_readings_float(float* data){
     X = (int16_t)retrieved_data[0] | ((int16_t)retrieved_data[1] << 8);
     Y = (int16_t)retrieved_data[2] | ((int16_t)retrieved_data[3] << 8);
     Z = (int16_t)retrieved_data[4] | ((int16_t)retrieved_data[5] << 8);
-
-    // printf("X= %d Y= %d Z= %d\n", 
-    //     X, 
-    //     Y, 
-    //     Z
-    // );
     
     X_out = ((float) X) / 256.0;
     Y_out = ((float) Y) / 256.0;

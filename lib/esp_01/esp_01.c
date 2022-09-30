@@ -457,3 +457,32 @@ char* esp_01_trim_response(char* buffer, uint buffer_size, uint *connection_id, 
     return_string[request_length] = '\0';
     return return_string;
 }
+
+
+void extract_request_values(char *request, uint request_size, uint *x, uint *y){
+    uint x_index = 1;
+    uint x_end_index = 0;
+
+    for(uint i = 1; i < request_size; i++){
+        if(request[i] == '/'){
+            x_end_index = i;
+            break;
+        }
+    }
+
+    uint y_index = x_end_index+1;
+    uint y_end_index = request_size-1;
+
+    uint x_length = x_end_index - x_index;
+    char x_substring[x_length+1];
+    strncpy(x_substring, &request[x_index], x_length);
+    x_substring[x_length] = '\0';
+    *x = atoi(x_substring);
+
+    uint y_length = y_end_index - y_index+1;
+    char y_substring[y_length+1];
+    strncpy(y_substring, &request[y_index], y_length);
+    y_substring[y_length] = '\0';
+    *y = atoi(y_substring);
+
+}
