@@ -12,9 +12,7 @@
 // Needs to be connected to i2c 
 
 void init_mpu6050(uint scl_pin, uint sda_pin, bool initialize_i2c);
-void mpu6050_accelerometer_readings_int(int16_t* data);
 void mpu6050_accelerometer_readings_float(float* data);
 void mpu6050_gyro_readings_float(float* data);
 void calculate_pitch_and_roll(float* data, float *roll, float *pitch);
 void find_accelerometer_error(uint sample_size);
-void find_gyro_error(uint sample_size);

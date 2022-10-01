@@ -30,7 +30,7 @@ volatile float soft_iron_loc[3][3] = {
 };
 
 // max value output is at 200 Hz
-bool init_gy271(uint scl_pin, uint sda_pin, bool initialize_i2c, float hard_iron[3],  float soft_iron[3][3]){
+bool init_gy271(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_calibration, float hard_iron[3],  float soft_iron[3][3]){
 
     if(initialize_i2c){
         i2c_config_t conf = {
@@ -46,19 +46,19 @@ bool init_gy271(uint scl_pin, uint sda_pin, bool initialize_i2c, float hard_iron
         i2c_driver_install(I2C_MASTER_NUM, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
     }
 
-    // assign the correction for irons
-    for (uint i = 0; i < 3; i++){
-        hard_iron_loc[i] = hard_iron[i];
-        printf("%f\n", hard_iron_loc[i]);
-    }
-    printf("\n");
+    if(apply_calibration){
+        // assign the correction for irons
+        for (uint i = 0; i < 3; i++){
+            hard_iron_loc[i] = hard_iron[i];
+        }
 
-    for (uint i = 0; i < 3; i++){
-        for (uint k = 0; k < 3; k++){
-            soft_iron_loc[i][k] = soft_iron[i][k];
-            printf("%f\n", soft_iron_loc[i][k]);
+        for (uint i = 0; i < 3; i++){
+            for (uint k = 0; k < 3; k++){
+                soft_iron_loc[i][k] = soft_iron[i][k];
+            }
         }
     }
+    
 
     // reset it 
     uint8_t reset_device1[] = {0x0A, 0b00000001};
@@ -129,4 +129,21 @@ void gy271_magnetometer_readings_micro_teslas(float* data){
                   (soft_iron_loc[i][1] * data[1]) + 
                   (soft_iron_loc[i][2] * data[2]);
     }
+}
+
+void calculate_yaw(float* magnetometer_data, float *yaw){
+    float x = magnetometer_data[0];
+    float y = magnetometer_data[1];
+    float z = magnetometer_data[2];
+
+    float acc_vector_length = sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2));
+    x = x /acc_vector_length;
+    y = y /acc_vector_length;
+    z = z /acc_vector_length;
+
+    // rotation around the x axis
+    *yaw = atan2f(y, x) * (180 / M_PI);
+
+    // rotation around the y axis
+    // *pitch = asinf(x) * (180 / M_PI);
 }
