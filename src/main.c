@@ -17,7 +17,6 @@ char *wifi_password = "1234567890";
 char *server_ip = "192.168.8.1";
 char *server_port = "3500";
 
-float refresh_rate_hz = 100;
 // const float mag_field_norm = 50.503
 
 // Used method found in MicWro Engr Video:
@@ -58,7 +57,10 @@ void influence_motors_with_PID(
     float gyro_degrees_x,
     float gyro_degrees_y,
     float gyro_degrees_z,
-    float *integral_sum // Pass reference to it
+    float *integral_sum, // Pass reference to it
+    float *last_error,
+    float elapsed_time,
+    float balance_margin
 ){
     
     //The goal of the PID is to reach 
@@ -70,9 +72,10 @@ void influence_motors_with_PID(
 
     float motor_data = 0;
 
-    error_x = (desired_gyro_x - gyro_degrees_x)/ -90.0; 
-    error_y = (desired_gyro_y - gyro_degrees_y)/ -90.0; 
+    error_x = (desired_gyro_x - gyro_degrees_x)/ -90.0;
+    error_y = (desired_gyro_y - gyro_degrees_y)/ -90.0;
     error_z = (desired_gyro_z - gyro_degrees_z)/ -90.0;
+    
 
     // proportional
     {
@@ -94,19 +97,28 @@ void influence_motors_with_PID(
 
     // derivative
     {
-        error_z_d = 0;
+        error_z_d = (error_z_p - *last_error);///elapsed_time;
+        // printf("Deriv %f", error_z_d);
     }
 
     // end result
     total_error = (gain_p * error_z_p) + (gain_i * error_z_i) + (gain_d * error_z_d);
-    // printf("    %10.2f = %10.2f + %10.2f + %10.2f    ",total_error, (gain_p * error_z_p), (gain_i * error_z_i), (gain_d * error_z_d));
+    *last_error = error_y;
+
+    // printf("  ERRORS  %10.2f = %10.2f + %10.2f + %10.2f    ",total_error, (gain_p * error_z_p), (gain_i * error_z_i), (gain_d * error_z_d));
 
 
     motor_data = total_error * 100.0;
     // The a motor is now the b motor RENAME THESE FUNCTION
-    change_speed_motor_B(motor_data, 28);
-    change_speed_motor_A(motor_data, 28);
-    // printf("          Error %10.2f  Motor value: %12.2f\n", total_error,motor_data);
+    if(motor_data > balance_margin || motor_data < -balance_margin){
+        change_speed_motor_A(motor_data, 24-balance_margin*1.5); // this wheel responds faster
+        change_speed_motor_B(motor_data, 28-balance_margin*1.5);
+        // printf("          Error %10.2f  Motor value: %12.2f    ", total_error,motor_data);
+    }else{
+        change_speed_motor_A(0, 27);
+        change_speed_motor_B(0, 27);
+    }
+    
 }
 
 void get_ned_coordinates(float* acceleration_data, float* magnetometer_data, float* north_vector, float* east_vector, float* down_vector){
@@ -220,25 +232,32 @@ void app_main() {
     float desired_accel_x = 0.0, desired_accel_y = 0.0, desired_accel_z = 1.0;
     float desired_gyro_x = 0.0, desired_gyro_y = 0.0, desired_gyro_z = 1.0;
 
+    float refresh_rate_hz = 100;
+    float balance_margin = 2.5;
     // proportional gain
-    float gain_p = 1.0;
+    float gain_p = 2.0; //11 is good
+
     // integration gain
-    float gain_i = 0.02;
+    // float gain_i = 0.009;
+    float gain_i = 0.33;
     float integral_sum = 0.0;
+
     // derivative gain
-    float gain_d = 0;
+    // float gain_d = 1.2;
+    float gain_d = 20;
+    float last_error = 0;
+
     bool first_load = true;
 
-    float complementary_ratio = 0.02;
-
-    // Find calibration values for gyro and accel
-    // vTaskDelay(2000 / portTICK_RATE_MS);
-    // find_accelerometer_error(1000);
-    // find_gyro_error(1000);
+    float complementary_ratio = 0.01;
 
     float pitch = 0;
     float roll = 0;
     float yaw = 0;
+    // Find calibration values for gyro and accel
+    // vTaskDelay(2000 / portTICK_RATE_MS);
+    // find_accelerometer_error(1000);
+    // find_gyro_error(1000);
 
     printf("\n\n====START OF LOOP====\n\n");
     while (true){
@@ -277,10 +296,10 @@ void app_main() {
         gyro_degrees[1] = (gyro_degrees[1] * (1-complementary_ratio)) + (complementary_ratio * (-pitch));
         gyro_degrees[2] = (gyro_degrees[2] * (1-complementary_ratio)) + (complementary_ratio * (-yaw));
 
-        printf("ACCEL, %6.2f, %6.2f, %6.2f, ", acceleration_data[0], acceleration_data[1], acceleration_data[2]);
-        printf("GYRO, %6.2f, %6.2f, %6.2f, ", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
-        printf("MAG, %6.2f, %6.2f, %6.2f, ", magnetometer_data[0], magnetometer_data[1], magnetometer_data[2]);
-        printf("NORTH, %6.2f, %6.2f, %6.2f, ", north_direction[0], north_direction[1], north_direction[2]);
+        // printf("ACCEL, %6.2f, %6.2f, %6.2f, ", acceleration_data[0], acceleration_data[1], acceleration_data[2]);
+        // printf("GYRO, %6.2f, %6.2f, %6.2f, ", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
+        // printf("MAG, %6.2f, %6.2f, %6.2f, ", magnetometer_data[0], magnetometer_data[1], magnetometer_data[2]);
+        // printf("NORTH, %6.2f, %6.2f, %6.2f, ", north_direction[0], north_direction[1], north_direction[2]);
         // Use complimentary filter or kalman filter to combine all the measurements
 
         influence_motors_with_PID(
@@ -296,7 +315,10 @@ void app_main() {
             gyro_degrees[0],
             gyro_degrees[1],
             gyro_degrees[2],
-            &integral_sum // Pass reference to it
+            &integral_sum, // Pass reference to it
+            &last_error,
+            1000.0/refresh_rate_hz,
+            balance_margin
         );
 
         // printf(
@@ -307,7 +329,7 @@ void app_main() {
         // );
         // Refresh rate must not be more than 1 KHz 
         // That is max for MPU6050
-        printf("\n");
+        // printf("\n");
         vTaskDelay((1000/ refresh_rate_hz) / portTICK_RATE_MS);
     }
 }
