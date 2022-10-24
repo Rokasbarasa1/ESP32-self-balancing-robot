@@ -11,6 +11,7 @@
 #include "../lib/gy271_qmc5883l/gy271.h"
 #include "../lib/nrf24l01/nrf24l01.h"
 
+
 // Other imports
 #include "../lib/util/ned_coordinates/ned_coordinates.h"
 #include "../lib/util/spi/spi.h"
@@ -99,139 +100,156 @@ void influence_motors_with_PID(
 void fix_mag_axis(float* magnetometer_data);
 
 void app_main() {
-    printf("STARTING PROGRAM\n");
-
-    if(using_cable){
-        init_mpu6050(22,21, true, true, accelerometer_correction, gyro_correction);
-    }else{
-        init_mpu6050(22,21, true, true, accelerometer_correction_no_cable, gyro_correction_no_cable);
-    }
-
-    init_gy271(22,21, false, true, hard_iron_correction, soft_iron_correction);
-    init_TB6612(GPIO_NUM_33,GPIO_NUM_32, GPIO_NUM_25, GPIO_NUM_27, GPIO_NUM_26, GPIO_NUM_14);
-
-    init_spi3();
-    init_nrf24l01(SPI3_HOST, 17, 16);
-    // nrf24_spi_transmit(0x2D, 8);
-    // vTaskDelay(500 / portTICK_RATE_MS);
-    // uint8_t data[6] = {0,0,0,0,0,0};
-    // nrf24_spi_read(0x00, 1, &data);
-    // printf("\ndata recieved: %d\n",data[0]);
-
-
-    // data[0] = 0;
-    // uint8_t data1[1] = {0};
-    // vTaskDelay(500 / portTICK_RATE_MS);
-    // nrf24_spi_read(0x1E, 1, &data1);
-    // printf("%d\n",data1[0]);
-    // // data[0] = 0;
-    // vTaskDelay(500 / portTICK_RATE_MS);
-
-    // uint8_t data2[1] = {0};
-    // nrf24_spi_transmit(0x1E, 0b11011011);
-    // vTaskDelay(500 / portTICK_RATE_MS);
-
-    // nrf24_spi_read(0x1E, 1, &data2);
-    // vTaskDelay(500 / portTICK_RATE_MS);
-
-    // printf("%d\n",data2[0]);
-    // data[0] = 0;
     
+    init_spi3();
+    bool nrf24_setup = nrf24_init(SPI3_HOST, 17, 16);
 
-    float acceleration_data[] = {0,0,0};
-    float gyro_angular[] = {0,0,0};
-    float gyro_degrees[] = {0,0,0};
-    float magnetometer_data[] = {0,0,0};
-
-    // integration
-    float integral_sum = 0.0;
-    // derivative
-    float last_error = 0;
-    bool first_load = true;
-
-    float pitch = 0;
-    float roll = 0;
-    float yaw = 0;
-    // Find calibration values for gyro and accel
-    // vTaskDelay(2000 / portTICK_RATE_MS);
-    // find_accelerometer_error(1000);
-    // find_gyro_error(1000);
-
-    printf("\n\n====START OF LOOP====\n\n");
+    if(nrf24_setup){
+        printf("nrf24 setup succeeded\n");
+    }else{
+        printf("nrf24 setup failed\n");
+    }
+    
     while (true){
-        // read sensor values
-        mpu6050_accelerometer_readings_float(acceleration_data);
-        mpu6050_gyro_readings_float(gyro_angular);
-        gy271_magnetometer_readings_micro_teslas(magnetometer_data);
-        fix_mag_axis(magnetometer_data);
-        
-        // NED coordinates probably not needed
-        float north_direction[] = {0,0,0};  // x
-        float east_direction[] = {0,0,0};   // y
-        float down_direction[] = {0,0,0};   // z
 
-        get_ned_coordinates(acceleration_data, magnetometer_data, north_direction, east_direction, down_direction);
-        calculate_pitch_and_roll(acceleration_data, &roll, &pitch);
-        calculate_yaw(magnetometer_data, &yaw);
-
-        // Find the initial position in degrees and apply it to the gyro measurement integral
-        // This will tell the robot which way to go to get the actual upward
-        if(first_load){
-            gyro_degrees[0] = -roll;
-            gyro_degrees[1] = -pitch;
-            gyro_degrees[2] = -yaw;
-            printf("Initial locaton x: %.2f y: %.2f, z: %.2f\n", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
-            first_load = false;
-        }
-        
-        // Convert angular velocity to actual degrees that it moved and add it to the integral (dead reckoning not PID)
-        gyro_degrees[0] += (gyro_angular[0] * (1.0/refresh_rate_hz));
-        gyro_degrees[1] += (gyro_angular[1] * (1.0/refresh_rate_hz));
-        gyro_degrees[2] += (gyro_angular[2] * (1.0/refresh_rate_hz));
-
-        // Apply complimentary filter
-        gyro_degrees[0] = (gyro_degrees[0] * (1-complementary_ratio)) + (complementary_ratio * (-roll));
-        gyro_degrees[1] = (gyro_degrees[1] * (1-complementary_ratio)) + (complementary_ratio * (-pitch));
-        gyro_degrees[2] = (gyro_degrees[2] * (1-complementary_ratio)) + (complementary_ratio * (-yaw));
-
-        // Used for telemetry monitor that I made
-        // printf("ACCEL, %6.2f, %6.2f, %6.2f, ", acceleration_data[0], acceleration_data[1], acceleration_data[2]);
-        // printf("GYRO, %6.2f, %6.2f, %6.2f, ", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
-        // printf("MAG, %6.2f, %6.2f, %6.2f, ", magnetometer_data[0], magnetometer_data[1], magnetometer_data[2]);
-        // printf("NORTH, %6.2f, %6.2f, %6.2f, ", north_direction[0], north_direction[1], north_direction[2]);
-        // Use complimentary filter or kalman filter to combine all the measurements
-
-        influence_motors_with_PID(
-            gain_p,
-            gain_i,
-            gain_d,
-            desired_gyro_x,
-            desired_gyro_y,
-            desired_gyro_z,
-            desired_accel_x,
-            desired_accel_y,
-            desired_accel_z,
-            gyro_degrees[0],
-            gyro_degrees[1],
-            gyro_degrees[2],
-            &integral_sum, // Pass reference to it
-            &last_error,
-            1000.0/refresh_rate_hz,
-            balance_margin
-        );
-
-        // printf(
-        //     "%f,%f,%f", 
-        //     magnetometer_data[0], 
-        //     magnetometer_data[1], 
-        //     magnetometer_data[2]
-        // );
-        // Refresh rate must not be more than 1 KHz 
-        // That is max for MPU6050
-        // printf("\n"); 
-        vTaskDelay((1000/ refresh_rate_hz) / portTICK_RATE_MS);
+        vTaskDelay(100 / portTICK_RATE_MS);
     }
 }
+
+// void app_main() {
+//     printf("STARTING PROGRAM\n");
+
+//     if(using_cable){
+//         init_mpu6050(22,21, true, true, accelerometer_correction, gyro_correction);
+//     }else{
+//         init_mpu6050(22,21, true, true, accelerometer_correction_no_cable, gyro_correction_no_cable);
+//     }
+
+//     init_gy271(22,21, false, true, hard_iron_correction, soft_iron_correction);
+//     init_TB6612(GPIO_NUM_33,GPIO_NUM_32, GPIO_NUM_25, GPIO_NUM_27, GPIO_NUM_26, GPIO_NUM_14);
+
+//     init_spi3();
+//     init_nrf24l01(SPI3_HOST, 17, 16);
+//     // nrf24_spi_transmit(0x2D, 8);
+//     // vTaskDelay(500 / portTICK_RATE_MS);
+//     // uint8_t data[6] = {0,0,0,0,0,0};
+//     // nrf24_spi_read(0x00, 1, &data);
+//     // printf("\ndata recieved: %d\n",data[0]);
+
+
+//     // data[0] = 0;
+//     // uint8_t data1[1] = {0};
+//     // vTaskDelay(500 / portTICK_RATE_MS);
+//     // nrf24_spi_read(0x1E, 1, &data1);
+//     // printf("%d\n",data1[0]);
+//     // // data[0] = 0;
+//     // vTaskDelay(500 / portTICK_RATE_MS);
+
+//     // uint8_t data2[1] = {0};
+//     // nrf24_spi_transmit(0x1E, 0b11011011);
+//     // vTaskDelay(500 / portTICK_RATE_MS);
+
+//     // nrf24_spi_read(0x1E, 1, &data2);
+//     // vTaskDelay(500 / portTICK_RATE_MS);
+
+//     // printf("%d\n",data2[0]);
+//     // data[0] = 0;
+    
+
+//     float acceleration_data[] = {0,0,0};
+//     float gyro_angular[] = {0,0,0};
+//     float gyro_degrees[] = {0,0,0};
+//     float magnetometer_data[] = {0,0,0};
+
+//     // integration
+//     float integral_sum = 0.0;
+//     // derivative
+//     float last_error = 0;
+//     bool first_load = true;
+
+//     float pitch = 0;
+//     float roll = 0;
+//     float yaw = 0;
+//     // Find calibration values for gyro and accel
+//     // vTaskDelay(2000 / portTICK_RATE_MS);
+//     // find_accelerometer_error(1000);
+//     // find_gyro_error(1000);
+
+//     printf("\n\n====START OF LOOP====\n\n");
+//     while (true){
+//         // read sensor values
+//         mpu6050_accelerometer_readings_float(acceleration_data);
+//         mpu6050_gyro_readings_float(gyro_angular);
+//         gy271_magnetometer_readings_micro_teslas(magnetometer_data);
+//         fix_mag_axis(magnetometer_data);
+        
+//         // NED coordinates probably not needed
+//         float north_direction[] = {0,0,0};  // x
+//         float east_direction[] = {0,0,0};   // y
+//         float down_direction[] = {0,0,0};   // z
+
+//         get_ned_coordinates(acceleration_data, magnetometer_data, north_direction, east_direction, down_direction);
+//         calculate_pitch_and_roll(acceleration_data, &roll, &pitch);
+//         calculate_yaw(magnetometer_data, &yaw);
+
+//         // Find the initial position in degrees and apply it to the gyro measurement integral
+//         // This will tell the robot which way to go to get the actual upward
+//         if(first_load){
+//             gyro_degrees[0] = -roll;
+//             gyro_degrees[1] = -pitch;
+//             gyro_degrees[2] = -yaw;
+//             printf("Initial locaton x: %.2f y: %.2f, z: %.2f\n", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
+//             first_load = false;
+//         }
+        
+//         // Convert angular velocity to actual degrees that it moved and add it to the integral (dead reckoning not PID)
+//         gyro_degrees[0] += (gyro_angular[0] * (1.0/refresh_rate_hz));
+//         gyro_degrees[1] += (gyro_angular[1] * (1.0/refresh_rate_hz));
+//         gyro_degrees[2] += (gyro_angular[2] * (1.0/refresh_rate_hz));
+
+//         // Apply complimentary filter
+//         gyro_degrees[0] = (gyro_degrees[0] * (1-complementary_ratio)) + (complementary_ratio * (-roll));
+//         gyro_degrees[1] = (gyro_degrees[1] * (1-complementary_ratio)) + (complementary_ratio * (-pitch));
+//         gyro_degrees[2] = (gyro_degrees[2] * (1-complementary_ratio)) + (complementary_ratio * (-yaw));
+
+//         // Used for telemetry monitor that I made
+//         // printf("ACCEL, %6.2f, %6.2f, %6.2f, ", acceleration_data[0], acceleration_data[1], acceleration_data[2]);
+//         // printf("GYRO, %6.2f, %6.2f, %6.2f, ", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
+//         // printf("MAG, %6.2f, %6.2f, %6.2f, ", magnetometer_data[0], magnetometer_data[1], magnetometer_data[2]);
+//         // printf("NORTH, %6.2f, %6.2f, %6.2f, ", north_direction[0], north_direction[1], north_direction[2]);
+//         // Use complimentary filter or kalman filter to combine all the measurements
+
+//         influence_motors_with_PID(
+//             gain_p,
+//             gain_i,
+//             gain_d,
+//             desired_gyro_x,
+//             desired_gyro_y,
+//             desired_gyro_z,
+//             desired_accel_x,
+//             desired_accel_y,
+//             desired_accel_z,
+//             gyro_degrees[0],
+//             gyro_degrees[1],
+//             gyro_degrees[2],
+//             &integral_sum, // Pass reference to it
+//             &last_error,
+//             1000.0/refresh_rate_hz,
+//             balance_margin
+//         );
+
+//         // printf(
+//         //     "%f,%f,%f", 
+//         //     magnetometer_data[0], 
+//         //     magnetometer_data[1], 
+//         //     magnetometer_data[2]
+//         // );
+//         // Refresh rate must not be more than 1 KHz 
+//         // That is max for MPU6050
+//         // printf("\n"); 
+//         vTaskDelay((1000/ refresh_rate_hz) / portTICK_RATE_MS);
+//     }
+// }
 
 
 void influence_motors_with_PID(
