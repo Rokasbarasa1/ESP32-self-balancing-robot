@@ -109,10 +109,26 @@ void app_main() {
     }else{
         printf("nrf24 setup failed\n");
     }
-    
+
+    uint8_t tx_address[5] = {0xEE, 0xDD, 0xCC, 0xBB, 0xAA};
+    uint8_t tx_data[] = "hello world!\n";
+    nrf24_tx_mode(tx_address, 10);
+
     while (true){
 
-        vTaskDelay(100 / portTICK_RATE_MS);
+        printf("Transmitting: ");
+        if(nrf24_transmit(tx_data)){
+            printf("TX success\n");
+            // gpio_put(2, 1);
+        }else{
+            printf("TX failed\n");
+        }
+
+
+        // sleep_ms(500);
+        // gpio_put(2, 0);
+        // sleep_ms(500);
+        vTaskDelay(1000 / portTICK_RATE_MS);
     }
 }
 
