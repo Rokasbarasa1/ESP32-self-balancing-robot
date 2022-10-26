@@ -112,14 +112,28 @@ void app_main() {
 
     uint8_t tx_address[5] = {0xEE, 0xDD, 0xCC, 0xBB, 0xAA};
     uint8_t tx_data[] = "hello world!\n";
-    nrf24_tx_mode(tx_address, 10);
+    uint8_t rx_data[32];
+
+    // nrf24_tx_mode(tx_address, 10);
+    nrf24_rx_mode(tx_address, 10);
 
     while (true){
+
+        printf("Receiving: ");
+        if(nrf24_data_available(1)){
+            nrf24_receive(rx_data);
+            for(uint8_t i = 0; i < strlen((char*) rx_data); i++ ){
+                printf("%c", ((char*) rx_data)[i]);
+            }
+            printf("\n");
+
+        }else{
+            printf("no data\n");
+        }
 
         printf("Transmitting: ");
         if(nrf24_transmit(tx_data)){
             printf("TX success\n");
-            // gpio_put(2, 1);
         }else{
             printf("TX failed\n");
         }
