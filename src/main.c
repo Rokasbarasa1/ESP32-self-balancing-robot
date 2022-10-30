@@ -80,7 +80,8 @@ void influence_motors_with_PID(
     float *integral_sum, // Pass reference to it
     float *last_error,
     float elapsed_time,
-    float balance_margin
+    float balance_margin,
+    float offset
 );
 // Switches the magnetometer axis to be like accelerometer and gyro
 void fix_mag_axis(float* magnetometer_data);
@@ -118,8 +119,7 @@ void app_main() {
     float yaw = 0;
 
     // Joystick values, 50 is basically zero position
-    uint x = 50;
-    uint y = 50;
+
 
     // Find calibration values for gyro and accel
     // vTaskDelay(2000 / portTICK_RATE_MS);
@@ -130,6 +130,9 @@ void app_main() {
     printf("\n\n====START OF LOOP====\n\n");
     while (true){
 
+        // Get the joystick values
+        uint x = 50;
+        uint y = 50;
          if(nrf24_data_available(1)){
             nrf24_receive(rx_data);
             for(uint8_t i = 0; i < strlen((char*) rx_data); i++ ){
@@ -200,7 +203,8 @@ void app_main() {
             &integral_sum, // Pass reference to it
             &last_error,
             1000.0/refresh_rate_hz,
-            balance_margin
+            balance_margin,
+            ((float) y - 50) /100 // use the joystick as offset
         );
 
         // printf(
@@ -233,13 +237,16 @@ void influence_motors_with_PID(
     float *integral_sum, // Pass reference to it
     float *last_error,
     float elapsed_time,
-    float balance_margin
+    float balance_margin,
+    float offset
 ){
     
-    //The goal of the PID is to reach 
-    // x = 0 (dont care about this one)
-    // y = 0 will let decide direction in which to spin wheels
-    // z = 1 how fast the wheels have to spin
+    if(offset != 0){
+        gain_i = 0;
+        gain_d = 0;
+    }
+
+    
     float error_x = 0, error_y = 0, error_z = 0, total_error = 0;
     float error_z_p = 0, error_z_i = 0, error_z_d = 0;
 
@@ -275,7 +282,7 @@ void influence_motors_with_PID(
     }
 
     // end result
-    total_error = (gain_p * error_z_p) + (gain_i * error_z_i) + (gain_d * error_z_d);
+    total_error = (gain_p * error_z_p) + (gain_i * error_z_i) + (gain_d * error_z_d) + offset;
     *last_error = error_y;
 
     // printf("  ERRORS  %10.2f = %10.2f + %10.2f + %10.2f    ",total_error, (gain_p * error_z_p), (gain_i * error_z_i), (gain_d * error_z_d));
