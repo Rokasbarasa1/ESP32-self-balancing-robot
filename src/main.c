@@ -34,10 +34,10 @@ float soft_iron_correction[3][3] = {
 };
 
 float accelerometer_correction[3] = {
-    0.068885,0.054472,0.952431
+    0.063146, 0.055942, 0.950542
 };
 float gyro_correction[3] = {
-    0.208137,-4.056841,0.413817
+    0.087236, -3.962918, 0.386343
 };
 
 float accelerometer_correction_no_cable[3] = {
@@ -58,7 +58,7 @@ const float complementary_ratio = 0.02;
 
 // PID gains
 const float gain_p = 3; 
-const float gain_i = 0.5;
+const float gain_i = 0.3;
 const float gain_d = 15;
 
 uint8_t tx_address[5] = {0xEE, 0xDD, 0xCC, 0xBB, 0xAA};
@@ -118,19 +118,32 @@ void app_main() {
     float roll = 0;
     float yaw = 0;
 
-    // Joystick values, 50 is basically zero position
 
 
     // Find calibration values for gyro and accel
-    // vTaskDelay(2000 / portTICK_RATE_MS);
-    // find_accelerometer_error(1000);
-    // find_gyro_error(1000);
+    vTaskDelay(2000 / portTICK_RATE_MS);
+    find_accelerometer_error(1000);
+    find_gyro_error(1000);
 
+    // uint8_t speed = 0;
+
+    // while (true)
+    // {
+    //     printf("Speed %d\n", speed );
+    //     change_speed_motor_A(speed, 0); 29 27
+    //     change_speed_motor_B(speed, 0); 34 31 
+    //     speed++;
+    //     speed = speed%100;
+
+    //     vTaskDelay(1000 / portTICK_RATE_MS);
+    // }
+    
 
     printf("\n\n====START OF LOOP====\n\n");
     while (true){
 
         // Get the joystick values
+        // Joystick values, 50 is basically zero position
         uint x = 50;
         uint y = 50;
          if(nrf24_data_available(1)){
@@ -295,8 +308,8 @@ void influence_motors_with_PID(
         change_speed_motor_B(motor_data, 27-balance_margin*1.5);
         // printf("          Error %10.2f  Motor value: %12.2f    ", total_error,motor_data);
     }else{
-        change_speed_motor_A(0, 27);
-        change_speed_motor_B(0, 27);
+        change_speed_motor_A(0, 0);
+        change_speed_motor_B(0, 0);
     }
     
 }
