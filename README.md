@@ -2,7 +2,9 @@
 
 A self balancing robot I am building.
 
-![ROBOT PICTRE](./images/robot%20picture.jpg)
+![Front](./images/front.png)
+![Back](./images/back.png)
+![Schematic](./images/schematicPeek.png)
 
 Design decisions:<br>
 
@@ -29,7 +31,7 @@ Design decisions:<br>
 
 - **PID** - PID is used to manage the control of the balancing. Some parameter is picked that correctly determines if the robot is upright, a goal for the parameter is set which pid will attempt to reach by calculating differences between measurements from sensors and measurement goals for those sensors. This will then use the difference in measurements to say to the motors how much to go in which direction. Each step of PID has a set gain for it for how much to use of a specific measurement to calculate the difference. Right now only proportional and integration parts of PID are used as I haven't figured out how to calculate the the derivative using the readings.
 
-- **FRAME** - The body of the robot was made in Fusion 360 and is mainly based on the measurements of the biggest parts that make the robot, the battery board and the controller with its sensors. Special prongs are made for the motors on the sides, that fit nicely with the motor transmissions. <br>The frame has some flaws, it is made in 3 levels the top level on which sits the sensors and the esp32, the top level only has one wall on top of which the platform sits. This lack of support for the controller level makes it able to flex when being handled, the frame does not break but it is a bad design because it can impact the sensor angular readings. So far this has not impacted the readings though. The motor mounts are also a bit this but that is because the motor transmission has small mount holes to begin with. Adding hot glue around the motor transmission helps relieve some of the stress on the prongs.
+- **FRAME** - The body of the robot was made in Fusion 360 and is mainly based on the measurements of the biggest parts that make the robot, the battery board and the controller with its sensors. Special prongs are made for the motors on the sides, that fit nicely with the motor transmissions. <br>The frame has some flaws, it is made in 3 levels the top level on which sits the sensors and the esp32, the top level only has one wall on top of which the platform sits. This lack of support for the controller level makes it able to flex when being handled, the frame does not break but it is a bad design because it can impact the sensor angular readings. So far this has not impacted the readings though. The motor mounts are also a bit flimsy but that is because the motor transmission has small mount holes to begin with. Adding hot glue around the motor transmission helps relieve some of the stress on the prongs. I fixed the lack of supports by adding a perf board cutout to the opposite side of the first support and it works well.
 <br>In general a lot of things that have to stay in place on the robot are fastened with hot glue as it would be too time intensive to design specific mount options. This is done to make sure the sensors are parallel, the battery is mounted and not wobbling, esp01 is mounted where it doesn't dangle.
 <br>All the components were 3d printed of course, I learned that having a margin of 0.1mm for parts is good if it is supposed to be a tight fit.
 <br>A sketch of the measurements can be seen below:<br>

@@ -8,8 +8,16 @@
 #define I2C_MASTER_RX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_TIMEOUT_MS       1000
 
+volatile float accelerometer_correction_loc[3] = {
+    0,0,1
+};
 
-void init_mpu6050(uint scl_pin, uint sda_pin, bool initialize_i2c){
+volatile float gyro_correction_loc[3] = {
+    0,0,0
+};
+// void init_mpu6050(uint scl_pin, uint sda_pin, bool initialize_i2c){
+
+void init_mpu6050(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_calibration, float accelerometer_correction[3], float gyro_correction[3]){
 
     if(initialize_i2c){
         i2c_config_t conf = {
@@ -23,6 +31,18 @@ void init_mpu6050(uint scl_pin, uint sda_pin, bool initialize_i2c){
 
         i2c_param_config(I2C_MASTER_NUM, &conf);
         i2c_driver_install(I2C_MASTER_NUM, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
+    }
+
+    if(apply_calibration){
+        // assign the correction for gyro
+        for (uint i = 0; i < 3; i++){
+            gyro_correction_loc[i] = gyro_correction[i];
+        }
+
+        // assign the correction for accelerometer
+        for (uint i = 0; i < 3; i++){
+            accelerometer_correction_loc[i] = accelerometer_correction[i];
+        }
     }
 
     // reset it 
@@ -64,9 +84,12 @@ void mpu6050_accelerometer_readings_float(float* data){
     Y_out = ((float) Y) / 16384.0;
     Z_out = ((float) Z) / 16384.0;
 
-    data[0] = X_out - (0.069385);
-    data[1] = Y_out - (-0.003915);
-    data[2] = Z_out - (0.958837 - 1);
+    data[0] = X_out - (accelerometer_correction_loc[0]);
+    data[1] = Y_out - (accelerometer_correction_loc[1]);
+    data[2] = Z_out - (accelerometer_correction_loc[2] - 1);
+    // data[0] = X_out - (0.069385);
+    // data[1] = Y_out - (-0.003915);
+    // data[2] = Z_out - (0.958837 - 1);
 }
 
 void mpu6050_gyro_readings_float(float* data){
@@ -94,9 +117,13 @@ void mpu6050_gyro_readings_float(float* data){
     Y_out = ((float) Y) / 131.0;
     Z_out = ((float) Z) / 131.0;
 
-    data[0] = X_out - (0.400450);// + 0.096947;
-    data[1] = Y_out - (-4.267702);// + 4.177492;
-    data[2] = Z_out - (0.505000);// - 0.440870;
+    data[0] = X_out - (gyro_correction_loc[0]);// + 0.096947;
+    data[1] = Y_out - (gyro_correction_loc[1]);// + 4.177492;
+    data[2] = Z_out - (gyro_correction_loc[2]);// - 0.440870;
+
+    // data[0] = X_out - (0.400450);// + 0.096947;
+    // data[1] = Y_out - (-4.267702);// + 4.177492;
+    // data[2] = Z_out - (0.505000);// - 0.440870;
 }
 
 
@@ -134,7 +161,31 @@ void find_accelerometer_error(uint sample_size){
     }
 
     printf(
-        "ACCELEROMETER errors: X: %f   Y: %f   Z: %f\n", 
+        "ACCELEROMETER errors:  X,Y,Z  %f, %f, %f\n", 
+        x_sum/sample_size, 
+        y_sum/sample_size, 
+        z_sum/sample_size
+    );
+}
+
+void find_gyro_error(uint sample_size){
+
+    float x_sum = 0, y_sum = 0, z_sum = 0;
+    float data[] = {0,0,0};
+    
+    for(uint i = 0; i < sample_size ; i++){
+        mpu6050_gyro_readings_float(data);
+
+        x_sum += data[0];
+        y_sum += data[1];
+        z_sum += data[2];
+        // It can sample stuff at 1KHz
+        // but 0.5Khz is just to be safe
+        vTaskDelay(2 / portTICK_RATE_MS);
+    }
+
+    printf(
+        "GYRO errors:  X,Y,Z  %f, %f, %f\n", 
         x_sum/sample_size, 
         y_sum/sample_size, 
         z_sum/sample_size

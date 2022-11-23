@@ -12,6 +12,27 @@
         "adxl345.h": "c",
         "cmath": "c",
         "random": "c",
-        "task.h": "c"
+        "task.h": "c",
+        "esp_01.h": "c",
+        "nrf24l01.h": "c",
+        "gpio.h": "c",
+        "optional": "c",
+        "istream": "c",
+        "ostream": "c",
+        "ratio": "c",
+        "system_error": "c",
+        "functional": "c",
+        "tuple": "c",
+        "type_traits": "c",
+        "utility": "c",
+        "spi_common.h": "c",
+        "cstddef": "c",
+        "spi.h": "c",
+        "deque": "c",
+        "list": "c",
+        "unordered_map": "c",
+        "unordered_set": "c",
+        "vector": "c",
+        "initializer_list": "c"
     }
 }
