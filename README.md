@@ -2,7 +2,9 @@
 
 A self balancing robot I am building.
 
-![ROBOT PICTRE](./images/robot%20picture.jpg)
+![Front](./images/front.png)
+![Back](./images/back.png)
+![Schematic](./images/schematicPeek.png)
 
 Design decisions:<br>
 
