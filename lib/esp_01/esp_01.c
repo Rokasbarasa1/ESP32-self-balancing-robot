@@ -256,21 +256,27 @@ bool esp_01_client_send_http(uint uart, char *ADDRESS, char *PORT, char *command
     return true;
 }
 
+// Basicaly reads the requests that are made to the server
 uint esp_01_server_IPD(uint uart, char *ack, uint timeout_ms, char* buffer, bool logging){
 
+    // Checking for various states in the output
+    // Error state
     char *error = "ERROR";
     uint e = 0;
     uint error_length = strlen(error);
 
+    // Message of acknoledgement
     uint u = 0;
     uint ack_length = strlen(ack);
     uint iterations = 0;
 
+    // error in esp 01 module, it reset
     char *reset = "wdt reset";
     uint r = 0;
     uint reset_length = strlen(reset);
 
     for(uint i = 0; i < 1023; i++){
+        // Get the data
         char* data = (char*) malloc(1+1);
         uint result = uart_read_bytes(uart, data, 1, timeout_ms / portTICK_RATE_MS);
         if(result == 0){
@@ -279,10 +285,15 @@ uint esp_01_server_IPD(uint uart, char *ack, uint timeout_ms, char* buffer, bool
         if(logging){
             printf("%c", data[0]);
         }
+        // Put the data in a buffer
+        // one byte at a time
         buffer[i] = data[0];
+
+        // For checking if it was ok later
         iterations = iterations + 1;
 
         // Check if ack reached
+        // by counting forward one char at a time and checking if the string matches
         if(data[0] == ack[u]){
             u++;
             if(u == ack_length){
@@ -298,6 +309,7 @@ uint esp_01_server_IPD(uint uart, char *ack, uint timeout_ms, char* buffer, bool
             u = 0;
         }
 
+        // Check if error showed up in text
         if(data[0] == error[e]){
             e++;
             if(e == error_length){
@@ -314,11 +326,13 @@ uint esp_01_server_IPD(uint uart, char *ack, uint timeout_ms, char* buffer, bool
             e = 0;
         }
 
+        // Check if it reset
         if(data[0] == reset[r]){
             r++;
             if(r == reset_length){
                 printf("\nESP01 crashed: wdt reset\n");
                 
+                // bad iterations number
                 iterations = 9999;
                 uart_flush(uart);
                 free(data);

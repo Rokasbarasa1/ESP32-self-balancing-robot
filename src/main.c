@@ -99,9 +99,8 @@ void app_main() {
     init_gy271(22,21, false, true, hard_iron_correction, soft_iron_correction);
     init_TB6612(GPIO_NUM_33,GPIO_NUM_32, GPIO_NUM_25, GPIO_NUM_27, GPIO_NUM_26, GPIO_NUM_14);
 
-    bool nrf24_setup = nrf24_init(SPI3_HOST, 17, 16);
-    nrf24_rx_mode(tx_address, 10);
-
+    // bool nrf24_setup = nrf24_init(SPI3_HOST, 17, 16);
+    // nrf24_rx_mode(tx_address, 10);
 
     float acceleration_data[] = {0,0,0};
     float gyro_angular[] = {0,0,0};
@@ -121,9 +120,9 @@ void app_main() {
 
 
     // Find calibration values for gyro and accel
-    vTaskDelay(2000 / portTICK_RATE_MS);
-    find_accelerometer_error(1000);
-    find_gyro_error(1000);
+    // vTaskDelay(2000 / portTICK_RATE_MS);
+    // find_accelerometer_error(1000);
+    // find_gyro_error(1000);
 
     // uint8_t speed = 0;
 
@@ -146,16 +145,16 @@ void app_main() {
         // Joystick values, 50 is basically zero position
         uint x = 50;
         uint y = 50;
-         if(nrf24_data_available(1)){
-            nrf24_receive(rx_data);
-            for(uint8_t i = 0; i < strlen((char*) rx_data); i++ ){
-                printf("%c", ((char*) rx_data)[i]);
-            }
-            printf("\n");
+        // if(nrf24_data_available(1)){
+        //     nrf24_receive(rx_data);
+        //     for(uint8_t i = 0; i < strlen((char*) rx_data); i++ ){
+        //         printf("%c", ((char*) rx_data)[i]);
+        //     }
+        //     printf("\n");
 
-            extract_request_values((char*) rx_data, strlen((char*) rx_data), &x, &y);
-            printf("Dat %d %d\n", x, y);
-        }
+        //     extract_request_values((char*) rx_data, strlen((char*) rx_data), &x, &y);
+        //     printf("Dat %d %d\n", x, y);
+        // }
 
 
         // read sensor values
