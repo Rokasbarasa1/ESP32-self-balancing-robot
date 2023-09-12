@@ -96,7 +96,7 @@ bool nrf24_test(){
         
     uint8_t data[1] = {0};
     read_register_multiple(RF_CH, data, 1);
-    printf("%d\n", data[0]);
+    // printf("%d\n", data[0]);
 
     if(data[0] != 0b00000000){ // check that it is empty
         return false;
@@ -106,7 +106,7 @@ bool nrf24_test(){
 
     uint8_t data1[1] = {0};
     read_register_multiple(RF_CH, data1, 1);
-    printf("%d\n", data1[0]);
+    // printf("%d\n", data1[0]);
 
     if(data1[0] != 0b01010101){ // check that it is the same value as writen
         return false;
@@ -308,7 +308,7 @@ bool nrf24_init(spi_host_device_t spi_port, uint pin_csn_temp, uint pin_ce_temp)
     csn_pin = pin_csn_temp;
     ce_pin = pin_ce_temp;
     
-    printf("Setting up device\n");
+    //printf("Setting up device\n");
     spi_device_interface_config_t device_config = {
         .address_bits = 8,
         .command_bits = 0,
@@ -324,11 +324,11 @@ bool nrf24_init(spi_host_device_t spi_port, uint pin_csn_temp, uint pin_ce_temp)
         .post_cb = NULL,
     };
 
-    printf("Init device\n");
+    //printf("Init device\n");
     init_spi_device(spi_port, &device_config, &device_handle);
 
     // init cs pin and set it to high to make the device not be selected 
-    printf("Deselecting device\n");
+    //printf("Deselecting device\n");
 
     gpio_set_direction(csn_pin, GPIO_MODE_OUTPUT);
     gpio_set_direction(ce_pin, GPIO_MODE_OUTPUT);
@@ -336,32 +336,35 @@ bool nrf24_init(spi_host_device_t spi_port, uint pin_csn_temp, uint pin_ce_temp)
     cs_deselect();
     ce_disable(); // disable to start changing registers on nrf24
 
-    printf("Testing\n");
+    //printf("Testing\n");
 
     if(!nrf24_test()){ // test if spi works
-        printf("Testing bad\n");
+        //printf("Testing bad\n");
+        printf("NRF24L01 failed\n");
 
         return false;
     }
-    printf("Testing ok\n");
+    //printf("Testing ok\n");
 
     nrf24_reset(0);
     write_register(CONFIG, 0b00000000);// Will come back
-    printf("CONFIG "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(read_register(CONFIG)));
+    // printf("CONFIG "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(read_register(CONFIG)));
     write_register(EN_AA, 0b00000000); // No auto ACK
-    printf("EN_AA "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(read_register(EN_AA)));
+    // printf("EN_AA "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(read_register(EN_AA)));
     write_register(EN_RXADDR, 0b00000000); // Will come back
-    printf("EN_RXADDR "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(read_register(EN_RXADDR)));
+    // printf("EN_RXADDR "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(read_register(EN_RXADDR)));
     write_register(SETUP_AW, 0b00000011); // 5 bytes rx/tx address field
-    printf("SETUP_AW "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(read_register(SETUP_AW)));
+    // printf("SETUP_AW "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(read_register(SETUP_AW)));
     write_register(SETUP_RETR, 0b00000000); // no ACK being used
-    printf("SETUP_RETR "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(read_register(SETUP_RETR)));
+    // printf("SETUP_RETR "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(read_register(SETUP_RETR)));
     write_register(RF_CH, 0b00000000);   // will come back
-    printf("RF_CH "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(read_register(RF_CH)));
+    // printf("RF_CH "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(read_register(RF_CH)));
     write_register(RF_SETUP, 0b00001110); // 0db power and data rate 2Mbps
-    printf("RF_SETUP "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(read_register(RF_SETUP)));
+    // printf("RF_SETUP "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(read_register(RF_SETUP)));
 
     ce_enable();
+
+    printf("NRF24L01 initialized\n");
     return true;
 }
 

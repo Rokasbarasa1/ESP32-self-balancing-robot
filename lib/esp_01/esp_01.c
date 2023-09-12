@@ -473,7 +473,7 @@ char* esp_01_trim_response(char* buffer, uint buffer_size, uint *connection_id, 
 }
 
 
-void extract_request_values(char *request, uint request_size, uint *x, uint *y){
+void esp_01_extract_request_values(char *request, uint request_size, uint *x, uint *y){
     uint x_index = 1;
     uint x_end_index = 0;
 
