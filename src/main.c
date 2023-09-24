@@ -34,7 +34,12 @@ void init_sensors();
 void init_esp32_peripherals();
 void init_loop_timer();
 void get_initial_position();
-void extract_request_values(char *request, uint8_t request_size, uint8_t *throttle, uint8_t *yaw, uint8_t *pitch, uint8_t *roll);
+void extract_joystick_request_values(char *request, uint8_t request_size, uint8_t *throttle, uint8_t *yaw, uint8_t *pitch, uint8_t *roll);
+void extract_request_type(char *request, uint8_t request_size, char *type_output);
+void extract_pid_request_values(char *request, uint8_t request_size, double *added_proportional, double *added_integral, double *added_derivative, double *added_master);
+void send_pid_base_info_to_remote();
+void send_pid_added_info_to_remote();
+char* generate_message_pid_values_nrf24(double base_proportional, double base_integral, double base_derivative, double base_master);
 void handle_loop_timing();
 double map_value(double value, double input_min, double input_max, double output_min, double output_max);
 double apply_dead_zone(double value, double max_value, double min_value, double dead_zone);
@@ -81,7 +86,8 @@ float accelerometer_z_rotation = 0;
 
 // For radio
 uint8_t tx_address[5] = {0xEE, 0xDD, 0xCC, 0xBB, 0xAA};
-uint8_t rx_data[32];
+char rx_data[32];
+char rx_type[32];
 
 uint8_t throttle = 0;
 uint8_t yaw = 50;
@@ -125,11 +131,22 @@ double error_speed_x = 0;
 //               const float pitch_gain_i = 0.0;
 //               const float pitch_gain_d = 6500.0;
 
+// integral - 
+const double base_pitch_master_gain = 1.0; // 1 - 100%
+const double base_pitch_gain_p = 4.9;           // P 16.5 I 0 D 3500  - almost balanced its own with medium wheels
+const double base_pitch_gain_i = 33;
+const double base_pitch_gain_d = 5000.0;
+
 // Integral
-const float pitch_master_gain = 1.0; // 1 - 100%
-const float pitch_gain_p = 4.9;           // P 16.5 I 0 D 3500  - almost balanced its own with medium wheels
-const float pitch_gain_i = 33;
-const float pitch_gain_d = 5000.0;
+double pitch_master_gain = base_pitch_master_gain;
+double pitch_gain_p = base_pitch_gain_p;
+double pitch_gain_i = base_pitch_gain_i;
+double pitch_gain_d = base_pitch_gain_d;
+
+double added_pitch_master_gain = 0;
+double added_pitch_gain_p = 0;
+double added_pitch_gain_i = 0;
+double added_pitch_gain_d = 0;
 
 const float speed_gain_p = 0.0; 
 const float speed_gain_i = 0.0;
@@ -190,9 +207,56 @@ void app_main() {
         roll = 50;
         data_received = false;
 
+        
         if(nrf24_data_available(1)){
             nrf24_receive(rx_data);
-            extract_request_values((char*) rx_data, strlen((char*) rx_data), &throttle, &yaw, &pitch, &roll);
+
+            // Get the type of request
+            extract_request_type(rx_data, strlen(rx_data), rx_type);
+            
+            printf("'%s'\n", rx_type);
+
+            for(uint i = 0; i < strlen(rx_data); i++){
+                printf("%c", rx_data[i]);
+            }
+            printf("\n");
+            
+
+            if(strcmp(rx_type, "joystick") == 0){
+                printf("Got joystick\n");
+                extract_joystick_request_values(rx_data, strlen(rx_data), &throttle, &yaw, &pitch, &roll);
+            }else if(strcmp(rx_type, "pid") == 0){
+                printf("Got pid\n");
+
+                double added_proportional = 0;
+                double added_integral = 0;
+                double added_derivative = 0;
+                double added_master_gain = 0;
+
+                extract_pid_request_values(rx_data, strlen(rx_data), &added_proportional, &added_integral, &added_derivative, &added_master_gain);
+                printf("Values %.2f\n", added_proportional);
+
+                pitch_gain_p += added_proportional;
+                pitch_gain_i += added_integral;
+                pitch_gain_d += added_derivative;
+                pitch_master_gain += added_master_gain;
+
+                added_pitch_gain_p = added_proportional;
+                added_pitch_gain_i = added_integral;
+                added_pitch_gain_d = added_derivative;
+                added_pitch_master_gain = added_master_gain;
+
+            }else if(strcmp(rx_type, "remoteSyncBase") == 0){
+                printf("Got sync base\n");
+                send_pid_base_info_to_remote();
+                printf("Done\n");
+            }else if(strcmp(rx_type, "remoteSyncAdded") == 0){
+                printf("Got sync added\n");
+                send_pid_added_info_to_remote();
+                printf("Done\n");
+            }
+
+            rx_type[0] = '\0'; // Clear out the string
             data_received = true;
         }
 
@@ -348,10 +412,15 @@ void get_initial_position(){
     printf("Initial location x: %.2f y: %.2f, z: %.2f\n", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
 }
 
-void extract_request_values(char *request, uint8_t request_size, uint8_t *throttle, uint8_t *yaw, uint8_t *pitch, uint8_t *roll)
+
+void extract_joystick_request_values(char *request, uint8_t request_size, uint8_t *throttle, uint8_t *yaw, uint8_t *pitch, uint8_t *roll)
 {
+    // Skip the request type
     char* start = strchr(request, '/') + 1;
     char* end = strchr(start, '/');
+
+    start = strchr(end, '/') + 1;
+    end = strchr(start, '/');
     if(start == NULL || end == NULL ) return;
     int length = end - start;
     char throttle_string[length + 1];
@@ -389,6 +458,65 @@ void extract_request_values(char *request, uint8_t request_size, uint8_t *thrott
     roll_string[length] = '\0';
     *roll = atoi(roll_string);
     //printf("'%s'\n", roll_string);
+}
+
+void extract_request_type(char *request, uint8_t request_size, char *type_output){
+    char* start = strchr(request, '/') + 1;
+    char* end = strchr(start, '/');
+    if(start == NULL || end == NULL ) return;
+    int length = end - start;
+    //char type_string[length + 1];
+    // You better be sure the length of the output string is big enough
+    strncpy(type_output, start, length);
+    type_output[length] = '\0';
+    //printf("'%s'\n", type_output);
+
+}
+
+void extract_pid_request_values(char *request, uint8_t request_size, double *added_proportional, double *added_integral, double *added_derivative, double *added_master){
+    // Skip the request type
+    char* start = strchr(request, '/') + 1;
+    char* end = strchr(start, '/');
+
+    start = strchr(end, '/') + 1;
+    end = strchr(start, '/');
+    if(start == NULL || end == NULL ) return;
+    int length = end - start;
+    char added_proportional_string[length + 1];
+    strncpy(added_proportional_string, start, length);
+    added_proportional_string[length] = '\0';
+    *added_proportional = strtod(added_proportional_string, NULL);
+    //printf("'%s'\n", added_proportional);
+
+    start = strchr(end, '/') + 1;
+    end = strchr(start, '/');
+    if(start == NULL || end == NULL ) return;
+    length = end - start;
+    char added_integral_string[length + 1];
+    strncpy(added_integral_string, start, length);
+    added_integral_string[length] = '\0';
+    *added_integral = strtod(added_integral_string, NULL);
+    //printf("'%s'\n", added_integral);
+
+    start = strchr(end, '/') + 1;
+    end = strchr(start, '/');
+    if(start == NULL || end == NULL ) return;
+    length = end - start;
+    char added_derivative_string[length + 1];
+    strncpy(added_derivative_string, start, length);
+    added_derivative_string[length] = '\0';
+    *added_derivative = strtod(added_derivative_string, NULL);
+    //printf("'%s'\n", added_derivative);
+
+    start = strchr(end, '/') + 1;
+    end = strchr(start, '/');
+    if(start == NULL || end == NULL ) return;
+    length = end - start;
+    char added_master_string[length + 1];
+    strncpy(added_master_string, start, length);
+    added_master_string[length] = '\0';
+    *added_master = strtod(added_master_string, NULL);
+    //printf("'%s'\n", added_master);
 }
 
 void handle_loop_timing(){
@@ -489,4 +617,78 @@ void calculate_speeds(float* acceleration, float* gyro_degrees, float* speed, fl
     speed[0] += speed_x_big / refresh_rate;
     speed[1] += speed_y_big / refresh_rate;
     speed[2] += speed_z_big / refresh_rate;
+}
+
+
+void send_pid_base_info_to_remote(){
+    nrf24_tx_mode(tx_address, 10);
+    vTaskDelay(250 / portTICK_RATE_MS);
+
+    char *string = generate_message_pid_values_nrf24(
+        base_pitch_gain_p, 
+        base_pitch_gain_i, 
+        base_pitch_gain_d,
+        base_pitch_master_gain
+    );
+    
+    for (size_t i = 0; i < 100; i++)
+    {
+        if(!nrf24_transmit(string)){
+            printf("FAILED\n");
+        }
+    }
+    free(string);
+    
+    nrf24_rx_mode(tx_address, 10);
+}
+
+void send_pid_added_info_to_remote(){
+    nrf24_tx_mode(tx_address, 10);
+    vTaskDelay(250 / portTICK_RATE_MS);
+
+    char *string = generate_message_pid_values_nrf24(
+        added_pitch_gain_p, 
+        added_pitch_gain_i, 
+        added_pitch_gain_d,
+        added_pitch_master_gain
+    );
+    
+    for (size_t i = 0; i < 200; i++)
+    {
+        if(!nrf24_transmit(string)){
+            printf("FAILED\n");
+        }
+    }
+    free(string);
+    
+    nrf24_rx_mode(tx_address, 10);
+}
+
+char* generate_message_pid_values_nrf24(double base_proportional, double base_integral, double base_derivative, double base_master){
+    // calculate the length of the resulting string
+    int length = snprintf(
+        NULL, 
+        0, 
+        "/s/%.2f/%.2f/%.2f/%.2f/  ", 
+        base_proportional, 
+        base_integral, 
+        base_derivative, 
+        base_master
+    );
+    
+    // allocate memory for the string
+    char *string = malloc(length + 1); // +1 for the null terminator
+
+    // format the string
+    snprintf(
+        (char*)string, 
+        length + 1, 
+        "/s/%.2f/%.2f/%.2f/%.2f/  ", 
+        base_proportional, 
+        base_integral, 
+        base_derivative, 
+        base_master
+    );
+
+    return string;
 }
