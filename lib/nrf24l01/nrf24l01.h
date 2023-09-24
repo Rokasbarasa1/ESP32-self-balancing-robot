@@ -54,6 +54,9 @@ bool nrf24_init(spi_host_device_t spi_port, uint pin_csn_temp, uint pin_ce_temp)
 void nrf24_tx_mode (uint8_t *address, uint8_t channel);
 void nrf24_rx_mode(uint8_t *address, uint8_t channel);
 bool nrf24_data_available(int pipe_number);
-bool nrf24_transmit (uint8_t *data);
-void nrf24_receive(uint8_t *data);
-void nrf24_read_all (uint8_t *data);
+bool nrf24_transmit(char *data);
+void nrf24_receive(char *data);
+void nrf24_read_all(uint8_t *data);
+void nrf24_crc(uint8_t enable);
+void nrf24_auto_ack(uint8_t enable);
+void nrf24_retransmission(uint8_t enable);

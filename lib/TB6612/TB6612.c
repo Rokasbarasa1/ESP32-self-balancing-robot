@@ -113,6 +113,7 @@ void change_speed_motor_B(float speed, float trim_speed){
 }
 
 void change_speed_motor_A(float speed, float trim_speed){
+    // Clamping extreme values
     if( speed < -100){
         speed = -100;
     }else if( speed > 100){

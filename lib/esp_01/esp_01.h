@@ -32,4 +32,4 @@ bool esp_01_client_send_http(uint uart, char *ADDRESS, char *PORT, char *command
 uint esp_01_server_IPD(uint uart, char *ack, uint timeout_ms, char* buffer, bool logging);
 bool esp_01_server_OK(uint uart, uint connection_id);
 char* esp_01_trim_response(char* buffer, uint buffer_size, uint *connection_id, uint *request_size);
-void extract_request_values(char *request, uint request_size, uint *x, uint *y);
+void esp_01_extract_request_values(char *request, uint request_size, uint *x, uint *y);

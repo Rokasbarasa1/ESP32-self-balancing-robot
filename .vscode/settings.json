@@ -33,6 +33,15 @@
         "unordered_map": "c",
         "unordered_set": "c",
         "vector": "c",
-        "initializer_list": "c"
+        "initializer_list": "c",
+        "pid.h": "c",
+        "esp_timer.h": "c",
+        "optical_encoder.h": "c",
+        "stdio.h": "c",
+        "chrono": "c",
+        "algorithm": "c",
+        "esp_system.h": "c",
+        "cstdio": "c",
+        "stdint.h": "c"
     }
 }
