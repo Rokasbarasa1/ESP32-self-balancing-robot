@@ -57,8 +57,6 @@ double pid_get_error(struct pid* pid_instance, double value, int64_t time){
 
     double time_passed_proportion = (((double)time/1000.0)-((double)pid_instance->m_previous_time/1000.0)) / 1000.0;
 
-    // printf("%6.10f = ((%lld/1000.0)-(%lld/1000.0)) / 1000.0;", time_passed_proportion, time, pid_instance->m_previous_time );
-    
     // proportional
     {
         error_p = error;
@@ -67,7 +65,6 @@ double pid_get_error(struct pid* pid_instance, double value, int64_t time){
     // integral
     {
         pid_instance->m_integral_sum += (error * time_passed_proportion);
-        // printf("%6.9f", (error * time_passed_proportion));
 
         if(pid_instance->m_stop_windup){
             // clamp the integral if it is getting out of bounds
@@ -83,7 +80,7 @@ double pid_get_error(struct pid* pid_instance, double value, int64_t time){
     // derivative
     {
         // divide by the time passed
-        error_d = (error_p - pid_instance->m_last_error) * time_passed_proportion;
+        error_d = (error_p - pid_instance->m_last_error) / time_passed_proportion;
 
         // Dont let it get out of bounds 
         if(error_d > pid_instance->m_max_value){
@@ -96,30 +93,11 @@ double pid_get_error(struct pid* pid_instance, double value, int64_t time){
         pid_instance->m_last_error = error;
     }
 
-    // printf("P| %6.3f %6.3f | ", (error_p * pid_instance->m_gain_proportional), error_p);
-    // printf("I| %6.3f %6.3f | ", (error_i * pid_instance->m_gain_integral), error_i);
-    // printf("D| %6.3f %6.3f | ", (error_d * pid_instance->m_gain_derivative), error_d);
-
 
     // printf("p: %8.4f, ", pid_instance->m_gain_proportional * error_p);
     // printf("i: %8.4f, ", pid_instance->m_gain_integral * error_i);
     // printf("d: %8.4f, ", pid_instance->m_gain_derivative * error_d);
 
-    // printf("ERRORS, %8.4f, %8.4f, %8.4f, ", pid_instance->m_gain_proportional * error_p, pid_instance->m_gain_integral * error_i, pid_instance->m_gain_derivative * error_d);
-
-
-    if(pid_instance->m_gain_integral * error_i > pid_instance->m_max_value){
-        // printf("P:%8.4f,I:%8.4f,D:%8.4f\n", pid_instance->m_gain_proportional * error_p, pid_instance->m_max_value, pid_instance->m_gain_derivative * error_d);
-        printf("%8.4f,%8.4f,%8.4f,%8.4f\n", value, pid_instance->m_gain_proportional * error_p, pid_instance->m_max_value, pid_instance->m_gain_derivative * error_d);
-    }else if(pid_instance->m_gain_integral * error_i < pid_instance->m_min_value){
-        // printf("P:%8.4f,I:%8.4f,D:%8.4f\n", pid_instance->m_gain_proportional * error_p, pid_instance->m_min_value, pid_instance->m_gain_derivative * error_d);
-        printf("%8.4f,%8.4f,%8.4f,%8.4f\n", value, pid_instance->m_gain_proportional * error_p, pid_instance->m_min_value, pid_instance->m_gain_derivative * error_d);
-    }else{
-        // printf("P:%8.4f,I:%8.4f,D:%8.4f\n", pid_instance->m_gain_proportional * error_p, pid_instance->m_gain_integral * error_i, pid_instance->m_gain_derivative * error_d);
-        printf("%8.4f,%8.4f,%8.4f,%8.4f\n", value, pid_instance->m_gain_proportional * error_p, pid_instance->m_gain_integral * error_i, pid_instance->m_gain_derivative * error_d);
-    }
-
-    // printf("ERRORS, 25.0, 50.0, 75.0, ");
 
     // end result
     double total_error = (pid_instance->m_gain_proportional * error_p) + 
@@ -139,4 +117,20 @@ double pid_get_error(struct pid* pid_instance, double value, int64_t time){
  */
 void pid_set_desired_value(struct pid* pid_instance, double value){
     pid_instance->m_desired_value = value;
+}
+
+void pid_set_proportional_gain(struct pid* pid_instance, double proportional_gain){
+    pid_instance->m_gain_proportional = proportional_gain;
+}
+
+void pid_set_integral_gain(struct pid* pid_instance, double integral_gain){
+    pid_instance->m_gain_integral = integral_gain;
+}
+
+void pid_set_derivative_gain(struct pid* pid_instance, double derivative_gain){
+    pid_instance->m_gain_derivative = derivative_gain;
+}
+
+void pid_reset_integral_sum(struct pid* pid_instance){
+    pid_instance->m_integral_sum = 0;
 }
