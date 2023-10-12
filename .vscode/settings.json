@@ -42,6 +42,9 @@
         "algorithm": "c",
         "esp_system.h": "c",
         "cstdio": "c",
-        "stdint.h": "c"
+        "stdint.h": "c",
+        "pid_v1.h": "c",
+        "*.tcc": "cpp",
+        "*.ipp": "c"
     }
 }

@@ -23,7 +23,7 @@
 #include "../lib/util/ned_coordinates/ned_coordinates.h"
 #include "../lib/util/spi/spi.h"
 #include "../lib/pid/pid.h"
-
+#include "../lib/pid2/PID_V1.h"
 
 #define Gravity 9.81
 
@@ -33,6 +33,7 @@ void check_calibrations();
 void init_sensors();
 void init_esp32_peripherals();
 void init_loop_timer();
+void track_time();
 void get_initial_position();
 void extract_joystick_request_values(char *request, uint8_t request_size, uint8_t *throttle, uint8_t *yaw, uint8_t *pitch, uint8_t *roll);
 void extract_request_type(char *request, uint8_t request_size, char *type_output);
@@ -53,6 +54,60 @@ void calculate_speeds(float* acceleration, float* gyro_degrees, float* speed, fl
 // https://www.youtube.com/watch?v=MinV5V1ioWg
 // Mag field norm at my location is 50.503
 // use software called Magneto 1.2
+
+/**
+ * SPI3 RADIO nRF24L01+
+ * 
+ * GPIO23 TX
+ * GPIO18 SCK
+ * GPIO19 RX
+ * 
+ * GPIO17 CSN
+ * GPIO16 CE
+ */
+
+
+/**
+ * TB6612
+ * 
+ * GPIO33 AI1
+ * GPIO32 AI2
+ * GPIO25 PWMA
+ * GPIO27 BI1
+ * GPIO26 BI2
+ * GPIO14 PWMB
+ * 
+ */
+
+/**
+ * GY271
+ * 
+ * GPIO22 SCL
+ * GPIO21 SDA
+ * 
+ */
+
+/**
+ * MPU6050
+ * 
+ * GPIO22 SCL
+ * GPIO21 SDA
+ * 
+ */
+
+/**
+ * Encoder 1
+ * 
+ * GPIO4
+ * 
+ */
+
+/**
+ * Encoder 1
+ * 
+ * GPIO15
+ * 
+ */
 
 // Calibrations
 float hard_iron_correction[3] = {
@@ -98,46 +153,21 @@ bool data_received = false;
 // Radio to pid target
 double pitch_target = 0;
 double yaw_target = 0;
-double target_dead_zone_percent = 0.3;
+double target_dead_zone_percent = 0.0;
 
 // PID errors
 double error_pitch = 0;
 double error_yaw = 0;
 double error_speed_x = 0;
 
-// PID gains
-// No motor adjustment 
-//const float pitch_gain_p = 4.5; 
-//const float pitch_gain_i = 0.22;
-//const float pitch_gain_d = 0.0;
 
-// With motor adjustment 
-// const float pitch_gain_p = 0.01; 
-// const float pitch_gain_i = 0.0;
-// const float pitch_gain_d = 0.0;
-
-// Good settings
-// const float pitch_gain_p = 1.5; 
-// const float pitch_gain_i = 0.15;
-// const float pitch_gain_d = 15.0;
-
-// const float speed_gain_p = 15.0; 
-// const float speed_gain_i = 0.2;
-// const float speed_gain_d = 0.0;
-
-// Derivative
-//               const float pitch_master_gain = 1.0; // 1 - 100%
-//               const float pitch_gain_p = 17.5;           // P 16.5 I 0 D 3500  - almost balanced its own with medium wheels
-//               const float pitch_gain_i = 0.0;
-//               const float pitch_gain_d = 6500.0;
-
-// integral - 
+// Actual PID adjustment for pitch
 const double base_pitch_master_gain = 1.0; // 1 - 100%
-const double base_pitch_gain_p = 4.9;           // P 16.5 I 0 D 3500  - almost balanced its own with medium wheels
-const double base_pitch_gain_i = 33;
-const double base_pitch_gain_d = 5000.0;
+const double base_pitch_gain_p = 0;
+const double base_pitch_gain_i = 0;
+const double base_pitch_gain_d = 0;
 
-// Integral
+// Used for smooth changes to PID while using remote control
 double pitch_master_gain = base_pitch_master_gain;
 double pitch_gain_p = base_pitch_gain_p;
 double pitch_gain_i = base_pitch_gain_i;
@@ -148,6 +178,7 @@ double added_pitch_gain_p = 0;
 double added_pitch_gain_i = 0;
 double added_pitch_gain_d = 0;
 
+// PID for speed
 const float speed_gain_p = 0.0; 
 const float speed_gain_i = 0.0;
 const float speed_gain_d = 0.0;
@@ -164,7 +195,7 @@ int8_t optical_encoder_2_result = -1;
 double wheels_speed[] = {0,0};
 
 // Refresh rate
-const float refresh_rate_hz = 500;
+const float refresh_rate_hz = 250;
 
 void app_main() {
 
@@ -178,12 +209,20 @@ void app_main() {
 
     printf("\n\n====START OF LOOP====\n\n");
     
-    struct pid pitch_pid = pid_init(pitch_master_gain * pitch_gain_p, pitch_master_gain * pitch_gain_i, pitch_master_gain * pitch_gain_d, 0.0, esp_timer_get_time(), 80.0, -80.0, 1);
+    struct pid pitch_pid = pid_init(pitch_master_gain * pitch_gain_p, pitch_master_gain * pitch_gain_i, pitch_master_gain * pitch_gain_d, 0.0, esp_timer_get_time(), 1000.0, -1000.0, 1);
     struct pid yaw_pid = pid_init(pitch_master_gain * pitch_gain_p, pitch_master_gain * pitch_gain_i, pitch_master_gain * pitch_gain_d, 0.0, esp_timer_get_time(), 80.0, -80.0, 1);
     struct pid wheel_speed_x_pid = pid_init(speed_gain_p, speed_gain_i, speed_gain_d, 0.0, esp_timer_get_time(), 100.0, -100, 1);
 
+
+    // truct PidType pitch_pid2;
+    // ID_init(&pitch_pid2, pitch_master_gain * pitch_gain_p, pitch_master_gain * pitch_gain_i, pitch_master_gain * pitch_gain_d, PID_Direction_Direct);
+    // ID_SetMode(&pitch_pid2, PID_Mode_Automatic);
+    // ID_SetSampleTime(&pitch_pid2, (int)(1000/refresh_rate_hz));
+    // ID_SetOutputLimits(&pitch_pid2, -255.0, 255.0);
+
     while (true){
         // Read sensor data ######################################################################################################################
+
 
         mpu6050_get_accelerometer_readings_gravity(acceleration_data);
         mpu6050_get_gyro_readings_dps(gyro_angular);
@@ -191,12 +230,17 @@ void app_main() {
         wheels_speed[0] = optical_encoder_get_hertz(optical_encoder_1_result, 2.55, -2.55);
         wheels_speed[1] = optical_encoder_get_hertz(optical_encoder_2_result, 2.55, -2.55);
 
+        // printf("(1) ");
+        // track_time();
+
         // Convert the sensor data to data that is useful
         fix_mag_axis(magnetometer_data); // Switches around the x and the y to match mpu6050 outputs
         calculate_degrees_x_y(acceleration_data, &accelerometer_x_rotation, &accelerometer_y_rotation);
         calculate_yaw(magnetometer_data, &accelerometer_z_rotation);
         convert_angular_rotation_to_degrees(gyro_angular, gyro_degrees, accelerometer_x_rotation, accelerometer_y_rotation, accelerometer_z_rotation, esp_timer_get_time());
 
+        // printf("(2) ");
+        // track_time();
 
         // Receive remote control data ###########################################################################################################
 
@@ -210,12 +254,11 @@ void app_main() {
         
         if(nrf24_data_available(1)){
             nrf24_receive(rx_data);
-
+            
             // Get the type of request
             extract_request_type(rx_data, strlen(rx_data), rx_type);
             
             printf("'%s'\n", rx_type);
-
             for(uint i = 0; i < strlen(rx_data); i++){
                 printf("%c", rx_data[i]);
             }
@@ -236,15 +279,22 @@ void app_main() {
                 extract_pid_request_values(rx_data, strlen(rx_data), &added_proportional, &added_integral, &added_derivative, &added_master_gain);
                 printf("Values %.2f\n", added_proportional);
 
-                pitch_gain_p += added_proportional;
-                pitch_gain_i += added_integral;
-                pitch_gain_d += added_derivative;
-                pitch_master_gain += added_master_gain;
+                pitch_gain_p = base_pitch_gain_p + added_proportional;
+                pitch_gain_i = base_pitch_gain_i + added_integral;
+                pitch_gain_d = base_pitch_gain_d + added_derivative;
+                pitch_master_gain = base_pitch_master_gain + added_master_gain;
 
                 added_pitch_gain_p = added_proportional;
                 added_pitch_gain_i = added_integral;
                 added_pitch_gain_d = added_derivative;
                 added_pitch_master_gain = added_master_gain;
+
+                pid_set_proportional_gain(&pitch_pid, pitch_gain_p * pitch_master_gain);
+                pid_set_integral_gain(&pitch_pid, pitch_gain_i * pitch_master_gain);
+                pid_set_derivative_gain(&pitch_pid, pitch_gain_d * pitch_master_gain);
+                pid_reset_integral_sum(&pitch_pid);
+
+                // PID_SetTunings(&pitch_pid2, pitch_gain_p * pitch_master_gain, pitch_gain_i * pitch_master_gain, pitch_gain_d * pitch_master_gain);
 
             }else if(strcmp(rx_type, "remoteSyncBase") == 0){
                 printf("Got sync base\n");
@@ -260,6 +310,8 @@ void app_main() {
             data_received = true;
         }
 
+        // printf("(3) ");
+        // track_time();
         // React to the data received from sensors and remote control ###########################################################################################################
 
         if(gyro_degrees[0] < 45 && gyro_degrees[0] > -45){
@@ -270,6 +322,8 @@ void app_main() {
             pid_set_desired_value(&pitch_pid, pitch_target);
             pid_set_desired_value(&yaw_pid, yaw_target);
 
+            // printf("(4) ");
+            // track_time();
             // CHeck that acceleration and gravity dont boost each other. 
             // If that is the case then it is wrong. Should not add speed in those cases
             // Also add a limit that the resulting speed cannot be more than 9.8 m/s after dividing that by hertz
@@ -281,7 +335,15 @@ void app_main() {
             gyro_degrees_dead_zone_adjusted[1] = apply_dead_zone(gyro_degrees[1], 180.0, -180.0, target_dead_zone_percent);
             gyro_degrees_dead_zone_adjusted[2] = apply_dead_zone(gyro_degrees[2], 180.0, -180.0, target_dead_zone_percent);
 
-            error_pitch = map_value(pid_get_error(&pitch_pid, gyro_degrees_dead_zone_adjusted[0], esp_timer_get_time()), -90.0, 90.0, -100.0, 100.0);
+
+            // pitch_pid2.myInput = gyro_degrees_dead_zone_adjusted[0];
+            // PID_Compute(&pitch_pid2);
+            // printf("  %6.4f == %6.4f ",error_pitch, pitch_pid2.myOutput);
+            // double error_pitch2 = map_value(pitch_pid2.myOutput , -45.0, 45.0, -100.0, 100.0);
+
+            error_pitch = pid_get_error(&pitch_pid, gyro_degrees_dead_zone_adjusted[0], esp_timer_get_time());
+            error_pitch = map_value(error_pitch, -45.0, 45.0, -100.0, 100.0);
+
             // error_yaw = map_value(pid_get_error(&yaw_pid, gyro_degrees[2], esp_timer_get_time()), -180.0, 180.0, -100.0, 100.0);
             // error_pitch = apply_dead_zone(error_pitch, 100.0, -100.0, target_dead_zone_percent);
             // error_speed_x = pid_get_error(&wheel_speed_x_pid, wheels_speed[1], esp_timer_get_time());
@@ -290,16 +352,25 @@ void app_main() {
             float motor_a_control = (-error_pitch) + error_yaw - error_speed_x; // Decrease speed at the cost of pitch 
             float motor_b_control = (-error_pitch) - error_yaw - error_speed_x;
 
+            //printf("(5) ");
+            //track_time();
+
             change_speed_motor_A(motor_a_control, 31.5 - 2); // 31.5 - 2
             change_speed_motor_B(motor_b_control, 26.9 - 2); // 26.9 - 2
 
             optical_encoder_set_clockwise(optical_encoder_1_result , motor_a_control > 0);
             optical_encoder_set_clockwise(optical_encoder_2_result , motor_b_control > 0);
 
+            // printf("(6) ");
+            // track_time();
+
         }else{
             change_speed_motor_A(0, 0);
             change_speed_motor_B(0, 0);
         }
+
+        // printf("(7) ");
+        // track_time();
 
         // Monitoring ###########################################################################################################################################################
 
@@ -317,9 +388,9 @@ void app_main() {
         // printf("NORTH, %6.2f, %6.2f, %6.2f, ", north_direction[0], north_direction[1], north_direction[2]);
         // printf("SPEED 1, %6.2f, %6.2f, %6.2f, ", wheels_speed[0], wheels_speed[1], 0.0);
         
-        // printf("\n"); 
 
         handle_loop_timing();
+        printf("\n"); 
     }
 }
 
@@ -366,13 +437,12 @@ void init_sensors(){
     // Init sensors
     printf("-----------------------------INITIALIZING MODULES...\n");
 
-    bool mpu6050 = init_mpu6050(22,21, true, true, accelerometer_correction, gyro_correction, complementary_ratio);
-    bool gy271 = init_gy271(22,21, false, true, hard_iron_correction, soft_iron_correction);
-    init_TB6612(GPIO_NUM_33,GPIO_NUM_32, GPIO_NUM_25, GPIO_NUM_27, GPIO_NUM_26, GPIO_NUM_14);
-    bool nrf24 = nrf24_init(SPI3_HOST, 17, 16);
-    optical_encoder_1_result = init_optical_encoder(4, true, 0.2356, 20, 0.2);
-    optical_encoder_2_result = init_optical_encoder(15, false, 0.2356, 20, 0.2);
-
+    bool mpu6050 = init_mpu6050(GPIO_NUM_22, GPIO_NUM_21, true, true, accelerometer_correction, gyro_correction, complementary_ratio);
+    bool gy271 = init_gy271(GPIO_NUM_22, GPIO_NUM_21, false, true, hard_iron_correction, soft_iron_correction);
+    init_TB6612(GPIO_NUM_33, GPIO_NUM_32, GPIO_NUM_25, GPIO_NUM_27, GPIO_NUM_26, GPIO_NUM_14);
+    bool nrf24 = nrf24_init(SPI3_HOST, GPIO_NUM_17, GPIO_NUM_16);
+    optical_encoder_1_result = init_optical_encoder(GPIO_NUM_4, true, 0.2356, 20, 0.2);
+    optical_encoder_2_result = init_optical_encoder(GPIO_NUM_15, false, 0.2356, 20, 0.2);
 
     printf("-----------------------------INITIALIZING MODULES DONE... ");
     if (mpu6050 && gy271 && nrf24 && optical_encoder_1_result >= 0 && optical_encoder_2_result >= 0){
@@ -522,12 +592,19 @@ void extract_pid_request_values(char *request, uint8_t request_size, double *add
 void handle_loop_timing(){
     loop_end_time = esp_timer_get_time()/1000;
     delta_loop_time = loop_end_time - loop_start_time;
-    // printf("Tim: %d ms\n", delta_loop_time);
+    printf("Tim: %d ms", delta_loop_time);
     if (delta_loop_time < (1000 / refresh_rate_hz))
     {
         vTaskDelay(((1000 / refresh_rate_hz) - delta_loop_time) / portTICK_RATE_MS);
     }
     loop_start_time = esp_timer_get_time()/1000;
+}
+
+void track_time(){
+    uint32_t loop_end_time_temp = esp_timer_get_time()/1000;
+    uint32_t delta_loop_time_temp = loop_end_time - loop_start_time;
+
+    printf("%5d ms ", delta_loop_time_temp);
 }
 
 double map_value(double value, double input_min, double input_max, double output_min, double output_max) {
