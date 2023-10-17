@@ -45,6 +45,10 @@
         "stdint.h": "c",
         "pid_v1.h": "c",
         "*.tcc": "cpp",
-        "*.ipp": "c"
+        "*.ipp": "c",
+        "gy271.h": "c",
+        "i2c.h": "c",
+        "memory": "cpp",
+        "future": "cpp"
     }
 }

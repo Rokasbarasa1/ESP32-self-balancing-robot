@@ -11,12 +11,10 @@
 #include "esp_task_wdt.h"
 
 // Drivers
-#include "../lib/esp_01/esp_01.h"
 #include "../lib/mpu6050/mpu6050.h"
 #include "../lib/TB6612/TB6612.h"
 #include "../lib/gy271_qmc5883l/gy271.h"
 #include "../lib/nrf24l01/nrf24l01.h"
-#include "../lib/esp_01/esp_01.h" // I wrote variable extraction function earlier, im using that from it
 #include "../lib/optical_encoder/optical_encoder.h"
 
 // Other imports
@@ -24,8 +22,6 @@
 #include "../lib/util/spi/spi.h"
 #include "../lib/pid/pid.h"
 #include "../lib/pid2/PID_V1.h"
-
-#define Gravity 9.81
 
 // Switches the magnetometer axis to be like accelerometer and gyro
 void fix_mag_axis(float* magnetometer_data);
@@ -48,12 +44,6 @@ void calculate_speeds_no_yaw(float* acceleration, float* gyro_degrees, float* sp
 void calculate_speeds(float* acceleration, float* gyro_degrees, float* speed, float refresh_rate);
 
 // ESP32 DevkitC v4 - ESP-WROOM-32D - 160 Mhz
-
-// For calibrating the magnetometer I
-// used a method found in MicWro Engr Video:
-// https://www.youtube.com/watch?v=MinV5V1ioWg
-// Mag field norm at my location is 50.503
-// use software called Magneto 1.2
 
 /**
  * SPI3 RADIO nRF24L01+
@@ -109,7 +99,16 @@ void calculate_speeds(float* acceleration, float* gyro_degrees, float* speed, fl
  * 
  */
 
-// Calibrations
+
+
+// Sensor corrections #################################################################################
+
+// For calibrating the magnetometer I
+// used a method found in MicWro Engr Video:
+// https://www.youtube.com/watch?v=MinV5V1ioWg
+// Mag field norm at my location is 50.503
+// use software called Magneto 1.2
+
 float hard_iron_correction[3] = {
     185.447609, 360.541288, 491.294615
 };
@@ -119,31 +118,29 @@ float soft_iron_correction[3][3] = {
     {-0.035586, -0.054355, 1.219251}
 };
 
-// float accelerometer_correction[3] = {
-//     0.030813, 0.021909, 0.952762
-// };
 float accelerometer_correction[3] = {
-    -0.043031, 0.005, 1.011565
+    -0.043031, -0.002, 1.011565
 };
 float gyro_correction[3] = {
     -6.119031, 2.084936, -0.766718
 };
 
-// handling loop timing
+// handling loop timing ###################################################################################
 uint32_t loop_start_time = 0;
 uint32_t loop_end_time = 0;
 int16_t delta_loop_time = 0;
 
-// Accelerometer values to degrees conversion
+// Accelerometer values to degrees conversion #############################################################
 float accelerometer_x_rotation = 0;
 float accelerometer_y_rotation = 0;
 float accelerometer_z_rotation = 0;
 
-// For radio
+// Radio config ########################################################################################### 
 uint8_t tx_address[5] = {0xEE, 0xDD, 0xCC, 0xBB, 0xAA};
 char rx_data[32];
 char rx_type[32];
 
+// Control with radio ####################################################################################
 uint8_t throttle = 0;
 uint8_t yaw = 50;
 uint8_t pitch = 50;
@@ -153,38 +150,38 @@ bool data_received = false;
 // Radio to pid target
 double pitch_target = 0;
 double yaw_target = 0;
-double target_dead_zone_percent = 0.0;
 
-// PID errors
+// PID errors ##############################################################################################
 double error_pitch = 0;
 double error_yaw = 0;
 double error_speed_x = 0;
 
-
 // Actual PID adjustment for pitch
 const double base_pitch_master_gain = 1.0; // 1 - 100%
-const double base_pitch_gain_p = 0;
-const double base_pitch_gain_i = 0;
-const double base_pitch_gain_d = 0;
-
-// Used for smooth changes to PID while using remote control
-double pitch_master_gain = base_pitch_master_gain;
-double pitch_gain_p = base_pitch_gain_p;
-double pitch_gain_i = base_pitch_gain_i;
-double pitch_gain_d = base_pitch_gain_d;
-
-double added_pitch_master_gain = 0;
-double added_pitch_gain_p = 0;
-double added_pitch_gain_i = 0;
-double added_pitch_gain_d = 0;
+const double base_pitch_gain_p = 15.0;
+const double base_pitch_gain_i = 250.0;
+const double base_pitch_gain_d = 0.31;
 
 // PID for speed
 const float speed_gain_p = 0.0; 
 const float speed_gain_i = 0.0;
 const float speed_gain_d = 0.0;
 
-// Sensor stuff
-const float complementary_ratio = 0.02;
+// Used for smooth changes to PID while using remote control. Dont touch
+double pitch_master_gain = base_pitch_master_gain;
+double pitch_gain_p = base_pitch_gain_p;
+double pitch_gain_i = base_pitch_gain_i;
+double pitch_gain_d = base_pitch_gain_d;
+double added_pitch_master_gain = 0;
+double added_pitch_gain_p = 0;
+double added_pitch_gain_i = 0;
+double added_pitch_gain_d = 0;
+
+// Refresh rate ##############################################################################################
+const float refresh_rate_hz = 400;
+
+// Sensor stuff ##############################################################################################
+const float complementary_ratio = 1.0 - 1.0/(1.0+(1.0/refresh_rate_hz)); // Depends on how often the loop runs. 1 second / (1 second + one loop time)
 float acceleration_data[] = {0,0,0};
 float gyro_angular[] = {0,0,0};
 float gyro_degrees[] = {0,0,0};
@@ -193,9 +190,7 @@ float acceleration_speed[] = {0,0,0};
 int8_t optical_encoder_1_result = -1;
 int8_t optical_encoder_2_result = -1;
 double wheels_speed[] = {0,0};
-
-// Refresh rate
-const float refresh_rate_hz = 250;
+double target_dead_zone_percent = 0.0;
 
 void app_main() {
 
@@ -214,7 +209,7 @@ void app_main() {
     struct pid wheel_speed_x_pid = pid_init(speed_gain_p, speed_gain_i, speed_gain_d, 0.0, esp_timer_get_time(), 100.0, -100, 1);
 
 
-    // truct PidType pitch_pid2;
+    // struct PidType pitch_pid2;
     // ID_init(&pitch_pid2, pitch_master_gain * pitch_gain_p, pitch_master_gain * pitch_gain_i, pitch_master_gain * pitch_gain_d, PID_Direction_Direct);
     // ID_SetMode(&pitch_pid2, PID_Mode_Automatic);
     // ID_SetSampleTime(&pitch_pid2, (int)(1000/refresh_rate_hz));
@@ -226,21 +221,15 @@ void app_main() {
 
         mpu6050_get_accelerometer_readings_gravity(acceleration_data);
         mpu6050_get_gyro_readings_dps(gyro_angular);
-        gy271_magnetometer_readings_micro_teslas(magnetometer_data);
-        wheels_speed[0] = optical_encoder_get_hertz(optical_encoder_1_result, 2.55, -2.55);
-        wheels_speed[1] = optical_encoder_get_hertz(optical_encoder_2_result, 2.55, -2.55);
-
-        // printf("(1) ");
-        // track_time();
+        // gy271_magnetometer_readings_micro_teslas(magnetometer_data);
+        // wheels_speed[0] = optical_encoder_get_hertz(optical_encoder_1_result, 2.55, -2.55);
+        // wheels_speed[1] = optical_encoder_get_hertz(optical_encoder_2_result, 2.55, -2.55);
 
         // Convert the sensor data to data that is useful
-        fix_mag_axis(magnetometer_data); // Switches around the x and the y to match mpu6050 outputs
+        // fix_mag_axis(magnetometer_data); // Switches around the x and the y to match mpu6050 outputs
         calculate_degrees_x_y(acceleration_data, &accelerometer_x_rotation, &accelerometer_y_rotation);
-        calculate_yaw(magnetometer_data, &accelerometer_z_rotation);
+        // calculate_yaw(magnetometer_data, &accelerometer_z_rotation);
         convert_angular_rotation_to_degrees(gyro_angular, gyro_degrees, accelerometer_x_rotation, accelerometer_y_rotation, accelerometer_z_rotation, esp_timer_get_time());
-
-        // printf("(2) ");
-        // track_time();
 
         // Receive remote control data ###########################################################################################################
 
@@ -342,7 +331,7 @@ void app_main() {
             // double error_pitch2 = map_value(pitch_pid2.myOutput , -45.0, 45.0, -100.0, 100.0);
 
             error_pitch = pid_get_error(&pitch_pid, gyro_degrees_dead_zone_adjusted[0], esp_timer_get_time());
-            error_pitch = map_value(error_pitch, -45.0, 45.0, -100.0, 100.0);
+            // error_pitch = map_value(error_pitch, -45.0, 45.0, -100.0, 100.0);
 
             // error_yaw = map_value(pid_get_error(&yaw_pid, gyro_degrees[2], esp_timer_get_time()), -180.0, 180.0, -100.0, 100.0);
             // error_pitch = apply_dead_zone(error_pitch, 100.0, -100.0, target_dead_zone_percent);
@@ -355,8 +344,8 @@ void app_main() {
             //printf("(5) ");
             //track_time();
 
-            change_speed_motor_A(motor_a_control, 31.5 - 2); // 31.5 - 2
-            change_speed_motor_B(motor_b_control, 26.9 - 2); // 26.9 - 2
+            change_speed_motor_A(motor_a_control, 0); // 31.5 - 2
+            change_speed_motor_B(motor_b_control, 0); // 26.9 - 2
 
             optical_encoder_set_clockwise(optical_encoder_1_result , motor_a_control > 0);
             optical_encoder_set_clockwise(optical_encoder_2_result , motor_b_control > 0);
@@ -387,10 +376,10 @@ void app_main() {
         // printf("MAG, %6.2f, %6.2f, %6.2f, ", magnetometer_data[0], magnetometer_data[1], magnetometer_data[2]);
         // printf("NORTH, %6.2f, %6.2f, %6.2f, ", north_direction[0], north_direction[1], north_direction[2]);
         // printf("SPEED 1, %6.2f, %6.2f, %6.2f, ", wheels_speed[0], wheels_speed[1], 0.0);
+        // printf("\n"); 
         
 
         handle_loop_timing();
-        printf("\n"); 
     }
 }
 
@@ -408,27 +397,63 @@ void check_calibrations(){
     find_accelerometer_error(1000);
     find_gyro_error(300);
 
+
+    // TB6612 and power bank - A 31.5 - 2   B 26.9 - 2
+    // L298 and 2 x 18650 cells - A 69.8   B 70  // z Worked very good with above settings though, very smooth
+    // L298 and 3 x 18650 cells - A 52.5   B 52.5  
+    // TB6612 and 3 x 18650 cells - A 15.5  B 12.5  
+
+
+    uint8_t movements_in_a_row = 5;
+    uint8_t move_counter = 0;
+
     // Check the fuckedupedness of motors and at what percentage they start to spin.
-    float speed = 25;
-    // while (speed != 100)
-    // {
-    //     printf("Speed %9.5f\n", speed);
-    //     change_speed_motor_A(speed, 0); // 34.9 the one with the broken pegs 31.5
-    //     speed += 0.1;
-    //     vTaskDelay(250 / portTICK_RATE_MS);
-    //     change_speed_motor_A(0, 0); // sometimes the motor doesn't have enough leverage between steps of voltage
-    //     vTaskDelay(250 / portTICK_RATE_MS);
-    // }
+    float speed = 0;
+    while (speed != 100)
+    {
+        printf("Speed %9.5f\n", speed);
+        change_speed_motor_A(speed, 0); // 34.9 the one with the broken pegs 31.5
+        speed += 0.5;
+        vTaskDelay(250 / portTICK_RATE_MS);
+        change_speed_motor_A(0, 0); // sometimes the motor doesn't have enough leverage between steps of voltage
+        vTaskDelay(250 / portTICK_RATE_MS);
+
+        if(optical_encoder_get_count(optical_encoder_2_result) != 0 ){
+            printf("Spin \n");
+            optical_encoder_set_count(optical_encoder_2_result, 0);
+            move_counter++;
+
+            if(move_counter == movements_in_a_row){
+                printf("Motor A start speed - %f \n", speed - 0.5);
+                break;
+            }
+        }else{
+            move_counter = 0;
+        }
+    }
     change_speed_motor_A(0, 0);
-    speed = 25;
+    speed = 0;
     while (speed != 100)
     {
         printf("Speed %9.5f\n", speed);
         change_speed_motor_B(speed, 0); // 26.9
-        speed += 0.1;
+        speed += 0.5;
         vTaskDelay(250 / portTICK_RATE_MS);
         change_speed_motor_B(0, 0); // sometimes the motor doesn't have enough leverage between steps of voltage
         vTaskDelay(250 / portTICK_RATE_MS);
+
+        if(optical_encoder_get_count(optical_encoder_1_result) != 0 ){
+            printf("Spin \n");
+            optical_encoder_set_count(optical_encoder_1_result, 0);
+            move_counter++;
+
+            if(move_counter == movements_in_a_row){
+                printf("Motor B start speed - %f \n", speed - 0.5);
+                break;
+            }
+        }else{
+            move_counter = 0;
+        }
     }
     change_speed_motor_B(0, 0);
 }
@@ -592,7 +617,7 @@ void extract_pid_request_values(char *request, uint8_t request_size, double *add
 void handle_loop_timing(){
     loop_end_time = esp_timer_get_time()/1000;
     delta_loop_time = loop_end_time - loop_start_time;
-    printf("Tim: %d ms", delta_loop_time);
+    // printf("Tim: %d ms", delta_loop_time);
     if (delta_loop_time < (1000 / refresh_rate_hz))
     {
         vTaskDelay(((1000 / refresh_rate_hz) - delta_loop_time) / portTICK_RATE_MS);

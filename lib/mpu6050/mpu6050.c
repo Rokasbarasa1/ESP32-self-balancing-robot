@@ -55,7 +55,7 @@ bool init_mpu6050(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_ca
 
     m_complementary_ratio = complementary_ratio;
 
-        // Test the sensor by reading it's address register
+    // Test the sensor by reading it's address register
     uint8_t test_register[] = {ID_REG};
     uint8_t test_data[] = {0};
 
@@ -77,7 +77,7 @@ bool init_mpu6050(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_ca
     }
 
     // reset it 
-    uint8_t reset_device1[] = {PWR_MGMT_REG, PWR_RESET|PWR_TEMP_DIS|PWR_CLOCK_INTERNAL_8MHZ};
+    uint8_t reset_device1[] = {PWR_MGMT_REG, PWR_RESET|PWR_TEMP_DIS|PWR_CLOCK_X_GYRO};
     i2c_master_write_to_device(
         I2C_MASTER_NUM, 
         MPU6050, 
@@ -96,7 +96,7 @@ bool init_mpu6050(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_ca
     );
     vTaskDelay(100 / portTICK_RATE_MS);
 
-    uint8_t reset_device3[] = {PWR_MGMT_REG, PWR_TEMP_DIS|PWR_CLOCK_INTERNAL_8MHZ};
+    uint8_t reset_device3[] = {PWR_MGMT_REG, PWR_TEMP_DIS|PWR_CLOCK_X_GYRO};
     i2c_master_write_to_device(
         I2C_MASTER_NUM, 
         MPU6050, 
@@ -243,27 +243,18 @@ void find_gyro_error(uint64_t sample_size)
 void convert_angular_rotation_to_degrees(float* gyro_angular, float* gyro_degrees, float rotation_around_x, float rotation_around_y, float rotation_around_z, int64_t time){
     // Convert angular velocity to actual degrees that it moved and add it to the integral (dead reckoning not PID)
 
-
     if(m_previous_time == 0){
         m_previous_time = time;
         return;
     }
 
-    double time_passed_proportion = (((double)time/1000.0)-((double)m_previous_time/1000.0)) / 1000.0;
+    double elapsed_time_sec= (((double)time/1000.0)-((double)m_previous_time/1000.0)) / 1000.0;
     m_previous_time = time;
 
-    // printf(" time %6.10f ",time_passed_proportion);
-
-    gyro_degrees[0] += (gyro_angular[0] * time_passed_proportion);
-    gyro_degrees[1] += (gyro_angular[1] * time_passed_proportion);
-    gyro_degrees[2] += (gyro_angular[2] * time_passed_proportion);
-
-    // Apply complimentary filter
-    // I have no idea why this version works. I tried the actually implementation and it was
-    // not working good. This one though works very good.
-    gyro_degrees[0] = -(-gyro_degrees[0] * (1.0 - m_complementary_ratio) - (m_complementary_ratio * rotation_around_x));
-    gyro_degrees[1] = -(-gyro_degrees[1] * (1.0 - m_complementary_ratio) - (m_complementary_ratio * rotation_around_y));
-    gyro_degrees[2] = -(-gyro_degrees[2] * (1.0 - m_complementary_ratio) - (m_complementary_ratio * rotation_around_z));
+    // Convert degrees per second and add the complementary filter with accelerometer degrees
+    gyro_degrees[0] = (1.0 - m_complementary_ratio) * (gyro_degrees[0] + gyro_angular[0] * elapsed_time_sec) + m_complementary_ratio * rotation_around_x;
+    gyro_degrees[1] = (1.0 - m_complementary_ratio) * (gyro_degrees[1] + gyro_angular[1] * elapsed_time_sec) + m_complementary_ratio * rotation_around_y;
+    gyro_degrees[2] = (1.0 - m_complementary_ratio) * (gyro_degrees[2] + gyro_angular[2] * elapsed_time_sec) + m_complementary_ratio * rotation_around_z;
 
     // I dont want to track how many times the degrees went over the 360 degree mark, no point.
     while (gyro_degrees[0] > 180.0) {

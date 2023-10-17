@@ -55,7 +55,7 @@ double pid_get_error(struct pid* pid_instance, double value, int64_t time){
 
     double error = (pid_instance->m_desired_value - value);
 
-    double time_passed_proportion = (((double)time/1000.0)-((double)pid_instance->m_previous_time/1000.0)) / 1000.0;
+    double elapsed_time_sec= (((double)time/1000.0)-((double)pid_instance->m_previous_time/1000.0)) / 1000.0;
 
     // proportional
     {
@@ -64,7 +64,7 @@ double pid_get_error(struct pid* pid_instance, double value, int64_t time){
 
     // integral
     {
-        pid_instance->m_integral_sum += (error * time_passed_proportion);
+        pid_instance->m_integral_sum += (error * elapsed_time_sec);
 
         if(pid_instance->m_stop_windup){
             // clamp the integral if it is getting out of bounds
@@ -80,7 +80,7 @@ double pid_get_error(struct pid* pid_instance, double value, int64_t time){
     // derivative
     {
         // divide by the time passed
-        error_d = (error_p - pid_instance->m_last_error) / time_passed_proportion;
+        error_d = (error_p - pid_instance->m_last_error) / elapsed_time_sec;
 
         // Dont let it get out of bounds 
         if(error_d > pid_instance->m_max_value){
