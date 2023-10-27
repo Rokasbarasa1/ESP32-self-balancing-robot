@@ -41,4 +41,5 @@ enum t_measure_scale {
 bool init_gy271(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_calibration, float hard_iron[3],  float soft_iron[3][3]);
 void gy271_magnetometer_readings_micro_teslas(float *data);
 void calculate_yaw(float* magnetometer_data, float *yaw);
+void calculate_yaw_tilt_compensated(float *magnetometer_data, float *yaw, float gyro_x_axis_rotation_degrees, float gyro_y_axis_rotation_degrees);
 

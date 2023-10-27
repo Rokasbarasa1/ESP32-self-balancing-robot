@@ -40,8 +40,8 @@ char* generate_message_pid_values_nrf24(double base_proportional, double base_in
 void handle_loop_timing();
 double map_value(double value, double input_min, double input_max, double output_min, double output_max);
 double apply_dead_zone(double value, double max_value, double min_value, double dead_zone);
-void calculate_speeds_no_yaw(float* acceleration, float* gyro_degrees, float* speed, float refresh_rate);
-void calculate_speeds(float* acceleration, float* gyro_degrees, float* speed, float refresh_rate);
+// void calculate_speeds_no_yaw(float* acceleration, float* gyro_degrees, float* speed, float refresh_rate);
+// void calculate_speeds(float* acceleration, float* gyro_degrees, float* speed, float refresh_rate);
 
 // ESP32 DevkitC v4 - ESP-WROOM-32D - 160 Mhz
 
@@ -100,6 +100,9 @@ void calculate_speeds(float* acceleration, float* gyro_degrees, float* speed, fl
  */
 
 
+// Wheel A - encoder 2
+// Wheel B - encoder 1
+
 
 // Sensor corrections #################################################################################
 
@@ -109,20 +112,37 @@ void calculate_speeds(float* acceleration, float* gyro_degrees, float* speed, fl
 // Mag field norm at my location is 50.503
 // use software called Magneto 1.2
 
+
+// https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#igrfwmm
+// Convert readings from this site to same units nanoTeslas to microteslas
+
+// When calculating this remember that these values are already
+// correcting and that the axis of the magnetometer are switched.
+// float hard_iron_correction[3] = {
+//     0, 0, 0
+// };
+
+// float soft_iron_correction[3][3] = {
+//     {1,0,0},
+//     {0,1,0},
+//     {0,0,1}
+// };
+
 float hard_iron_correction[3] = {
-    185.447609, 360.541288, 491.294615
+    416.657934, 146.816267, -177.441049
 };
+
 float soft_iron_correction[3][3] = {
-    {1.001470, 0.025460, -0.035586},
-    {0.025460, 0.405497, -0.054355},
-    {-0.035586, -0.054355, 1.219251}
+    {0.177997,-0.000304,-0.003343},
+    {-0.000304,0.176037,-0.005926},
+    {-0.003343,-0.005926,0.216928}
 };
 
 float accelerometer_correction[3] = {
-    -0.043031, -0.002, 1.011565
+    -0.031383, -0.01, 1.034993
 };
 float gyro_correction[3] = {
-    -6.119031, 2.084936, -0.766718
+    -6.133409, 1.828601, -0.318321
 };
 
 // handling loop timing ###################################################################################
@@ -133,7 +153,7 @@ int16_t delta_loop_time = 0;
 // Accelerometer values to degrees conversion #############################################################
 float accelerometer_x_rotation = 0;
 float accelerometer_y_rotation = 0;
-float accelerometer_z_rotation = 0;
+float magnetometer_z_rotation = 0;
 
 // Radio config ########################################################################################### 
 uint8_t tx_address[5] = {0xEE, 0xDD, 0xCC, 0xBB, 0xAA};
@@ -147,14 +167,13 @@ uint8_t pitch = 50;
 uint8_t roll = 50;
 bool data_received = false;
 
-// Radio to pid target
-double pitch_target = 0;
-double yaw_target = 0;
-
 // PID errors ##############################################################################################
 double error_pitch = 0;
 double error_yaw = 0;
-double error_speed_x = 0;
+double error_speed_A = 0;
+double error_speed_B = 0;
+double error_position_A = 0;
+double error_position_B = 0;
 
 // Actual PID adjustment for pitch
 const double base_pitch_master_gain = 1.0; // 1 - 100%
@@ -166,6 +185,16 @@ const double base_pitch_gain_d = 0.31;
 const float speed_gain_p = 0.0; 
 const float speed_gain_i = 0.0;
 const float speed_gain_d = 0.0;
+
+// PID for postion of robot
+const float position_gain_p = 0.0; 
+const float position_gain_i = 0.0;
+const float position_gain_d = 0.0;
+
+// PID for yaw
+const float yaw_gain_p = 0.6; 
+const float yaw_gain_i = 0.0;
+const float yaw_gain_d = 0.0;
 
 // Used for smooth changes to PID while using remote control. Dont touch
 double pitch_master_gain = base_pitch_master_gain;
@@ -189,8 +218,13 @@ float magnetometer_data[] = {0,0,0};
 float acceleration_speed[] = {0,0,0};
 int8_t optical_encoder_1_result = -1;
 int8_t optical_encoder_2_result = -1;
-double wheels_speed[] = {0,0};
+double wheel_speed[] = {0,0};
+double wheel_position[] = {0,0};
+
 double target_dead_zone_percent = 0.0;
+
+double target_pitch = 0.0;
+double target_yaw = 0.0;
 
 void app_main() {
 
@@ -205,41 +239,41 @@ void app_main() {
     printf("\n\n====START OF LOOP====\n\n");
     
     struct pid pitch_pid = pid_init(pitch_master_gain * pitch_gain_p, pitch_master_gain * pitch_gain_i, pitch_master_gain * pitch_gain_d, 0.0, esp_timer_get_time(), 1000.0, -1000.0, 1);
-    struct pid yaw_pid = pid_init(pitch_master_gain * pitch_gain_p, pitch_master_gain * pitch_gain_i, pitch_master_gain * pitch_gain_d, 0.0, esp_timer_get_time(), 80.0, -80.0, 1);
-    struct pid wheel_speed_x_pid = pid_init(speed_gain_p, speed_gain_i, speed_gain_d, 0.0, esp_timer_get_time(), 100.0, -100, 1);
-
-
-    // struct PidType pitch_pid2;
-    // ID_init(&pitch_pid2, pitch_master_gain * pitch_gain_p, pitch_master_gain * pitch_gain_i, pitch_master_gain * pitch_gain_d, PID_Direction_Direct);
-    // ID_SetMode(&pitch_pid2, PID_Mode_Automatic);
-    // ID_SetSampleTime(&pitch_pid2, (int)(1000/refresh_rate_hz));
-    // ID_SetOutputLimits(&pitch_pid2, -255.0, 255.0);
+    struct pid yaw_pid = pid_init(yaw_gain_p, yaw_gain_i, yaw_gain_d, 0.0, esp_timer_get_time(), 1000.0, -1000.0, 1);
+    struct pid wheel_speed_A_pid = pid_init(speed_gain_p, speed_gain_i, speed_gain_d, 0.0, esp_timer_get_time(), 1000.0, -1000.0, 1);
+    struct pid wheel_speed_B_pid = pid_init(speed_gain_p, speed_gain_i, speed_gain_d, 0.0, esp_timer_get_time(), 1000.0, -1000.0, 1);
+    struct pid wheel_position_A_pid = pid_init(position_gain_p, position_gain_i, position_gain_d, 0.0, esp_timer_get_time(), 1000.0, -1000.0, 1);
+    struct pid wheel_position_B_pid = pid_init(position_gain_p, position_gain_i, position_gain_d, 0.0, esp_timer_get_time(), 1000.0, -1000.0, 1);
 
     while (true){
         // Read sensor data ######################################################################################################################
-
-
         mpu6050_get_accelerometer_readings_gravity(acceleration_data);
         mpu6050_get_gyro_readings_dps(gyro_angular);
-        // gy271_magnetometer_readings_micro_teslas(magnetometer_data);
-        // wheels_speed[0] = optical_encoder_get_hertz(optical_encoder_1_result, 2.55, -2.55);
-        // wheels_speed[1] = optical_encoder_get_hertz(optical_encoder_2_result, 2.55, -2.55);
+        gy271_magnetometer_readings_micro_teslas(magnetometer_data);
+        wheel_speed[0] = optical_encoder_get_hertz(optical_encoder_2_result, 2.55, -2.55);
+        wheel_speed[1] = optical_encoder_get_hertz(optical_encoder_1_result, 2.55, -2.55);
+        wheel_position[0] = optical_encoder_get_count(optical_encoder_2_result);
+        wheel_position[1] = optical_encoder_get_count(optical_encoder_1_result);
 
         // Convert the sensor data to data that is useful
-        // fix_mag_axis(magnetometer_data); // Switches around the x and the y to match mpu6050 outputs
+        fix_mag_axis(magnetometer_data); // Switches around the x and the y to match mpu6050 outputs
         calculate_degrees_x_y(acceleration_data, &accelerometer_x_rotation, &accelerometer_y_rotation);
-        // calculate_yaw(magnetometer_data, &accelerometer_z_rotation);
-        convert_angular_rotation_to_degrees(gyro_angular, gyro_degrees, accelerometer_x_rotation, accelerometer_y_rotation, accelerometer_z_rotation, esp_timer_get_time());
+        convert_angular_rotation_to_degrees_x_y(gyro_angular, gyro_degrees, accelerometer_x_rotation, accelerometer_y_rotation, esp_timer_get_time(), true);
+
+        calculate_yaw_tilt_compensated(magnetometer_data, &magnetometer_z_rotation, gyro_degrees[0], gyro_degrees[1]);
+        // Just calling this to set the last timestamp
+        // convert_angular_rotation_to_degrees_z(gyro_angular, gyro_degrees, magnetometer_z_rotation, esp_timer_get_time());
+        // I trust the magnetometer more than the gyro in this case
+        gyro_degrees[2] = magnetometer_z_rotation;
 
         // Receive remote control data ###########################################################################################################
-
         // Initialize values to be default again
         throttle = 0;
-        yaw = gyro_degrees[2];// Use current yaw as default 
+        // yaw = gyro_degrees[2];// Use current yaw as default 
+        yaw = 0;
         pitch = 50;
         roll = 50;
         data_received = false;
-
         
         if(nrf24_data_available(1)){
             nrf24_receive(rx_data);
@@ -256,7 +290,23 @@ void app_main() {
 
             if(strcmp(rx_type, "joystick") == 0){
                 printf("Got joystick\n");
+                
+                uint8_t throttle = 0;
+                uint8_t yaw = 50;
+                uint8_t pitch = 50;
+                uint8_t roll = 50;
+
                 extract_joystick_request_values(rx_data, strlen(rx_data), &throttle, &yaw, &pitch, &roll);
+
+                // i dont know how to handle the switch from -180 to 180 degrees yet
+                if(gyro_degrees[2] > 140){
+                    target_yaw = 140.0;
+                }else if(gyro_degrees[2] < -140){
+                    target_yaw = -140.0;
+                }else{
+                    target_yaw = map_value(yaw, 0.0, 100.0, -40.0, 40.0) + gyro_degrees[2];
+                }
+
             }else if(strcmp(rx_type, "pid") == 0){
                 printf("Got pid\n");
 
@@ -299,85 +349,49 @@ void app_main() {
             data_received = true;
         }
 
-        // printf("(3) ");
-        // track_time();
         // React to the data received from sensors and remote control ###########################################################################################################
 
-        if(gyro_degrees[0] < 45 && gyro_degrees[0] > -45){
+        if(gyro_degrees[0] < 20 && gyro_degrees[0] > -20){
 
             // Update pid targets by transforming remote input
-            pitch_target = map_value(pitch, 0.0, 100.0, -20.0, 20.0);
-            yaw_target = map_value(yaw, -20.0, 20.0, 0.0, 100.0);
-            pid_set_desired_value(&pitch_pid, pitch_target);
-            pid_set_desired_value(&yaw_pid, yaw_target);
-
-            // printf("(4) ");
-            // track_time();
-            // CHeck that acceleration and gravity dont boost each other. 
-            // If that is the case then it is wrong. Should not add speed in those cases
-            // Also add a limit that the resulting speed cannot be more than 9.8 m/s after dividing that by hertz
-
-            calculate_speeds_no_yaw(acceleration_data, gyro_degrees, acceleration_speed, esp_timer_get_time());
+            // target_pitch = map_value(pitch, 0.0, 100.0, -20.0, 20.0);
+            // target_yaw = map_value(yaw, -20.0, 20.0, 0.0, 100.0);
+            pid_set_desired_value(&pitch_pid, target_pitch);
+            pid_set_desired_value(&yaw_pid, target_yaw);
 
             float gyro_degrees_dead_zone_adjusted[3] = {0.0,0.0,0.0};
             gyro_degrees_dead_zone_adjusted[0] = apply_dead_zone(gyro_degrees[0], 180.0, -180.0, target_dead_zone_percent);
             gyro_degrees_dead_zone_adjusted[1] = apply_dead_zone(gyro_degrees[1], 180.0, -180.0, target_dead_zone_percent);
             gyro_degrees_dead_zone_adjusted[2] = apply_dead_zone(gyro_degrees[2], 180.0, -180.0, target_dead_zone_percent);
 
-
-            // pitch_pid2.myInput = gyro_degrees_dead_zone_adjusted[0];
-            // PID_Compute(&pitch_pid2);
-            // printf("  %6.4f == %6.4f ",error_pitch, pitch_pid2.myOutput);
-            // double error_pitch2 = map_value(pitch_pid2.myOutput , -45.0, 45.0, -100.0, 100.0);
-
             error_pitch = pid_get_error(&pitch_pid, gyro_degrees_dead_zone_adjusted[0], esp_timer_get_time());
-            // error_pitch = map_value(error_pitch, -45.0, 45.0, -100.0, 100.0);
+            error_speed_A = pid_get_error(&wheel_speed_A_pid, wheel_speed[0], esp_timer_get_time());
+            error_speed_B = pid_get_error(&wheel_speed_B_pid, wheel_speed[1], esp_timer_get_time());
+            error_position_A = pid_get_error(&wheel_position_A_pid, wheel_position[0], esp_timer_get_time());
+            error_position_B = pid_get_error(&wheel_position_B_pid, wheel_position[1], esp_timer_get_time());
+            error_yaw = pid_get_error(&yaw_pid, gyro_degrees[2], esp_timer_get_time());
 
-            // error_yaw = map_value(pid_get_error(&yaw_pid, gyro_degrees[2], esp_timer_get_time()), -180.0, 180.0, -100.0, 100.0);
-            // error_pitch = apply_dead_zone(error_pitch, 100.0, -100.0, target_dead_zone_percent);
-            // error_speed_x = pid_get_error(&wheel_speed_x_pid, wheels_speed[1], esp_timer_get_time());
+            float motor_A_control = (-error_pitch) - error_yaw + error_speed_A + error_position_A; 
+            float motor_B_control = (-error_pitch) + error_yaw + error_speed_B + error_position_B;
 
-            // Try adding error of acceleration here
-            float motor_a_control = (-error_pitch) + error_yaw - error_speed_x; // Decrease speed at the cost of pitch 
-            float motor_b_control = (-error_pitch) - error_yaw - error_speed_x;
+            change_speed_motor_A(motor_A_control, 0);
+            change_speed_motor_B(motor_B_control, 0);
 
-            //printf("(5) ");
-            //track_time();
-
-            change_speed_motor_A(motor_a_control, 0); // 31.5 - 2
-            change_speed_motor_B(motor_b_control, 0); // 26.9 - 2
-
-            optical_encoder_set_clockwise(optical_encoder_1_result , motor_a_control > 0);
-            optical_encoder_set_clockwise(optical_encoder_2_result , motor_b_control > 0);
-
-            // printf("(6) ");
-            // track_time();
+            optical_encoder_set_clockwise(optical_encoder_2_result , motor_A_control > 0);
+            optical_encoder_set_clockwise(optical_encoder_1_result , motor_B_control > 0);
 
         }else{
             change_speed_motor_A(0, 0);
             change_speed_motor_B(0, 0);
         }
 
-        // printf("(7) ");
-        // track_time();
-
         // Monitoring ###########################################################################################################################################################
 
-        // printf("SPEED, %9.5f, %9.5f, %9.5f, ", speed[0], error_speed_x, 100.0);
-        // printf(" Loop Scanner 1 - %d   %9.5f  ", 
-        //     optical_encoder_get_count(optical_encoder_2_result),
-        //     optical_encoder_get_hertz(optical_encoder_2_result, 2.55, -2.55)
-        // );
         // printf("ACCEL, %6.2f, %6.2f, %6.2f, ", acceleration_data[0], acceleration_data[1], acceleration_data[2]);
-        // printf("GYRO, %6.2f, %6.2f, %6.2f, ", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
-        // printf("ERROR, %6.2f, %6.2f, ", error_pitch, error_speed_x);
-
-        // printf("TARGET, %6.2f, ", pitch_target);
-        // printf("MAG, %6.2f, %6.2f, %6.2f, ", magnetometer_data[0], magnetometer_data[1], magnetometer_data[2]);
-        // printf("NORTH, %6.2f, %6.2f, %6.2f, ", north_direction[0], north_direction[1], north_direction[2]);
-        // printf("SPEED 1, %6.2f, %6.2f, %6.2f, ", wheels_speed[0], wheels_speed[1], 0.0);
-        // printf("\n"); 
-        
+        printf("GYRO, %6.2f, %6.2f, %6.2f, ", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
+        printf("MAG, %6.2f, %6.2f, %6.2f, ", magnetometer_data[0], magnetometer_data[1], magnetometer_data[2]);
+        // printf("%6.5f %6.5f %6.5f", magnetometer_data[0], magnetometer_data[1], magnetometer_data[2]);
+        printf("\n"); 
 
         handle_loop_timing();
     }
@@ -498,11 +512,11 @@ void get_initial_position(){
     fix_mag_axis(magnetometer_data); // Switches around the x and the y to match mpu6050
 
     calculate_degrees_x_y(acceleration_data, &accelerometer_x_rotation, &accelerometer_y_rotation);
-    calculate_yaw(magnetometer_data, &accelerometer_z_rotation);
+    calculate_yaw(magnetometer_data, &magnetometer_z_rotation);
 
     gyro_degrees[0] = accelerometer_x_rotation;
     gyro_degrees[1] = accelerometer_y_rotation;
-    gyro_degrees[2] = accelerometer_z_rotation;
+    gyro_degrees[2] = magnetometer_z_rotation;
 
     printf("Initial location x: %.2f y: %.2f, z: %.2f\n", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
 }
@@ -670,56 +684,56 @@ double apply_dead_zone(double value, double max_value, double min_value, double 
     return return_value * half_range + mid_point; // scale back to original range
 }
 
-void calculate_speeds_no_yaw(float* acceleration, float* gyro_degrees, float* speed, float refresh_rate){
-    // Converting to radians
-    float pitch_radian = gyro_degrees[1] * M_PI / 180.0;
-    float roll_radian = gyro_degrees[0] * M_PI / 180.0;
+// void calculate_speeds_no_yaw(float* acceleration, float* gyro_degrees, float* speed, float refresh_rate){
+//     // Converting to radians
+//     float pitch_radian = gyro_degrees[1] * M_PI / 180.0;
+//     float roll_radian = gyro_degrees[0] * M_PI / 180.0;
 
-    // Convert acceleration to m/s^2
-    double acceleration_meters[] = {acceleration[0] * 9.81, acceleration[1] * 9.81, acceleration[2] * 9.81};
+//     // Convert acceleration to m/s^2
+//     double acceleration_meters[] = {acceleration[0] * 9.81, acceleration[1] * 9.81, acceleration[2] * 9.81};
 
-    // Calculate the projected acceleration along each axis
-    double speed_x_big = acceleration_meters[0] + (9.81 * sin(pitch_radian));
-    double speed_y_big = acceleration_meters[1] + (9.81 * sin(roll_radian));
-    double speed_z_big = acceleration_meters[2] + (9.81 * cos(pitch_radian) * cos(roll_radian));
+//     // Calculate the projected acceleration along each axis
+//     double speed_x_big = acceleration_meters[0] + (9.81 * sin(pitch_radian));
+//     double speed_y_big = acceleration_meters[1] + (9.81 * sin(roll_radian));
+//     double speed_z_big = acceleration_meters[2] + (9.81 * cos(pitch_radian) * cos(roll_radian));
 
-    // Calculating speed by integrating actual acceleration over time
-    speed[0] += speed_x_big / refresh_rate;
-    speed[1] += speed_y_big / refresh_rate;
-    speed[2] += speed_z_big / refresh_rate;
-}
+//     // Calculating speed by integrating actual acceleration over time
+//     speed[0] += speed_x_big / refresh_rate;
+//     speed[1] += speed_y_big / refresh_rate;
+//     speed[2] += speed_z_big / refresh_rate;
+// }
 
-void calculate_speeds(float* acceleration, float* gyro_degrees, float* speed, float refresh_rate){
-    // Convert to radians
-    float roll_radian = gyro_degrees[0] * M_PI / 180.0;
-    float pitch_radian = gyro_degrees[1] * M_PI / 180.0;
-    float yaw_radian = gyro_degrees[2] * M_PI / 180.0;
+// void calculate_speeds(float* acceleration, float* gyro_degrees, float* speed, float refresh_rate){
+//     // Convert to radians
+//     float roll_radian = gyro_degrees[0] * M_PI / 180.0;
+//     float pitch_radian = gyro_degrees[1] * M_PI / 180.0;
+//     float yaw_radian = gyro_degrees[2] * M_PI / 180.0;
 
-    // Convert acceleration to m/s^2 and adjust for gravity
-    double acceleration_meters[] = {acceleration[0] * 9.81, acceleration[1] * 9.81, acceleration[2] * 9.81};
+//     // Convert acceleration to m/s^2 and adjust for gravity
+//     double acceleration_meters[] = {acceleration[0] * 9.81, acceleration[1] * 9.81, acceleration[2] * 9.81};
 
-    double rotation_matrix[3][3];
+//     double rotation_matrix[3][3];
 
-    rotation_matrix[0][0] = cos(yaw_radian)*cos(pitch_radian); 
-    rotation_matrix[0][1] = cos(yaw_radian)*sin(pitch_radian)*sin(roll_radian) - sin(yaw_radian)*cos(roll_radian);
-    rotation_matrix[0][2] = cos(yaw_radian)*sin(pitch_radian)*cos(roll_radian) + sin(yaw_radian)*sin(roll_radian);
+//     rotation_matrix[0][0] = cos(yaw_radian)*cos(pitch_radian); 
+//     rotation_matrix[0][1] = cos(yaw_radian)*sin(pitch_radian)*sin(roll_radian) - sin(yaw_radian)*cos(roll_radian);
+//     rotation_matrix[0][2] = cos(yaw_radian)*sin(pitch_radian)*cos(roll_radian) + sin(yaw_radian)*sin(roll_radian);
 
-    rotation_matrix[1][0] = sin(yaw_radian)*cos(pitch_radian); 
-    rotation_matrix[1][1] = sin(yaw_radian)*sin(pitch_radian)*sin(roll_radian) + cos(yaw_radian)*cos(roll_radian);
-    rotation_matrix[1][2] = sin(yaw_radian)*sin(pitch_radian)*cos(roll_radian) - cos(yaw_radian)*sin(roll_radian);
+//     rotation_matrix[1][0] = sin(yaw_radian)*cos(pitch_radian); 
+//     rotation_matrix[1][1] = sin(yaw_radian)*sin(pitch_radian)*sin(roll_radian) + cos(yaw_radian)*cos(roll_radian);
+//     rotation_matrix[1][2] = sin(yaw_radian)*sin(pitch_radian)*cos(roll_radian) - cos(yaw_radian)*sin(roll_radian);
 
-    rotation_matrix[2][0] = -sin(pitch_radian); 
-    rotation_matrix[2][1] = cos(pitch_radian)*sin(roll_radian); 
-    rotation_matrix[2][2] = cos(pitch_radian)*cos(roll_radian); 
+//     rotation_matrix[2][0] = -sin(pitch_radian); 
+//     rotation_matrix[2][1] = cos(pitch_radian)*sin(roll_radian); 
+//     rotation_matrix[2][2] = cos(pitch_radian)*cos(roll_radian); 
 
-    double speed_x_big = rotation_matrix[0][0] * acceleration_meters[0] + rotation_matrix[0][1] * acceleration_meters[1] + rotation_matrix[0][2] * acceleration_meters[2]; 
-    double speed_y_big = rotation_matrix[1][3] * acceleration_meters[0] + rotation_matrix[1][4] * acceleration_meters[1] + rotation_matrix[1][5] * acceleration_meters[2]; 
-    double speed_z_big = rotation_matrix[2][6] * acceleration_meters[0] + rotation_matrix[2][7] * acceleration_meters[1] + rotation_matrix[2][8] * acceleration_meters[2]; 
+//     double speed_x_big = rotation_matrix[0][0] * acceleration_meters[0] + rotation_matrix[0][1] * acceleration_meters[1] + rotation_matrix[0][2] * acceleration_meters[2]; 
+//     double speed_y_big = rotation_matrix[1][3] * acceleration_meters[0] + rotation_matrix[1][4] * acceleration_meters[1] + rotation_matrix[1][5] * acceleration_meters[2]; 
+//     double speed_z_big = rotation_matrix[2][6] * acceleration_meters[0] + rotation_matrix[2][7] * acceleration_meters[1] + rotation_matrix[2][8] * acceleration_meters[2]; 
 
-    speed[0] += speed_x_big / refresh_rate;
-    speed[1] += speed_y_big / refresh_rate;
-    speed[2] += speed_z_big / refresh_rate;
-}
+//     speed[0] += speed_x_big / refresh_rate;
+//     speed[1] += speed_y_big / refresh_rate;
+//     speed[2] += speed_z_big / refresh_rate;
+// }
 
 
 void send_pid_base_info_to_remote(){
