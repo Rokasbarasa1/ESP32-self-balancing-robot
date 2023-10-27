@@ -145,11 +145,28 @@ void calculate_yaw(float *magnetometer_data, float *yaw)
     float y = magnetometer_data[1];
     float z = magnetometer_data[2];
 
-    float acc_vector_length = sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2));
-    x = x / acc_vector_length;
-    y = y / acc_vector_length;
-    z = z / acc_vector_length;
-
     // rotation around the z axis
     *yaw = atan2f(y, x) * (180 / M_PI);
+
+    // Convert yaw to [0, 360] range
+    if (*yaw > 180) {
+        *yaw -= 360;
+    }
+}
+
+void calculate_yaw_tilt_compensated(float *magnetometer_data, float *yaw, float gyro_x_axis_rotation_degrees, float gyro_y_axis_rotation_degrees){
+    float roll = gyro_x_axis_rotation_degrees * (M_PI / 180);  //  Convert roll from degrees to radians
+    float pitch = gyro_y_axis_rotation_degrees * (M_PI / 180);  // Convert pitch from degrees to radians
+
+    float mx = magnetometer_data[0];
+    float my = magnetometer_data[1];
+    float mz = magnetometer_data[2];
+
+    float Xc = mx * cos(pitch) + mz * sin(pitch);
+    float Yc = mx * sin(roll) * sin(pitch) + my * cos(roll) - mz * sin(roll) * cos(pitch);
+
+    *yaw = atan2(Yc, Xc) * (180 / M_PI);
+    if (*yaw > 180) {
+        *yaw -= 360;
+    }
 }

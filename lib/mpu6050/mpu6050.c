@@ -55,7 +55,7 @@ bool init_mpu6050(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_ca
 
     m_complementary_ratio = complementary_ratio;
 
-        // Test the sensor by reading it's address register
+    // Test the sensor by reading it's address register
     uint8_t test_register[] = {ID_REG};
     uint8_t test_data[] = {0};
 
@@ -77,7 +77,7 @@ bool init_mpu6050(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_ca
     }
 
     // reset it 
-    uint8_t reset_device1[] = {PWR_MGMT_REG, PWR_RESET|PWR_TEMP_DIS|PWR_CLOCK_INTERNAL_8MHZ};
+    uint8_t reset_device1[] = {PWR_MGMT_REG, PWR_RESET|PWR_TEMP_DIS|PWR_CLOCK_X_GYRO};
     i2c_master_write_to_device(
         I2C_MASTER_NUM, 
         MPU6050, 
@@ -96,7 +96,7 @@ bool init_mpu6050(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_ca
     );
     vTaskDelay(100 / portTICK_RATE_MS);
 
-    uint8_t reset_device3[] = {PWR_MGMT_REG, PWR_TEMP_DIS|PWR_CLOCK_INTERNAL_8MHZ};
+    uint8_t reset_device3[] = {PWR_MGMT_REG, PWR_TEMP_DIS|PWR_CLOCK_X_GYRO};
     i2c_master_write_to_device(
         I2C_MASTER_NUM, 
         MPU6050, 
@@ -243,27 +243,18 @@ void find_gyro_error(uint64_t sample_size)
 void convert_angular_rotation_to_degrees(float* gyro_angular, float* gyro_degrees, float rotation_around_x, float rotation_around_y, float rotation_around_z, int64_t time){
     // Convert angular velocity to actual degrees that it moved and add it to the integral (dead reckoning not PID)
 
-
     if(m_previous_time == 0){
         m_previous_time = time;
         return;
     }
 
-    double time_passed_proportion = (((double)time/1000.0)-((double)m_previous_time/1000.0)) / 1000.0;
+    double elapsed_time_sec= (((double)time/1000.0)-((double)m_previous_time/1000.0)) / 1000.0;
     m_previous_time = time;
 
-    // printf(" time %6.10f ",time_passed_proportion);
-
-    gyro_degrees[0] += (gyro_angular[0] * time_passed_proportion);
-    gyro_degrees[1] += (gyro_angular[1] * time_passed_proportion);
-    gyro_degrees[2] += (gyro_angular[2] * time_passed_proportion);
-
-    // Apply complimentary filter
-    // I have no idea why this version works. I tried the actually implementation and it was
-    // not working good. This one though works very good.
-    gyro_degrees[0] = -(-gyro_degrees[0] * (1.0 - m_complementary_ratio) - (m_complementary_ratio * rotation_around_x));
-    gyro_degrees[1] = -(-gyro_degrees[1] * (1.0 - m_complementary_ratio) - (m_complementary_ratio * rotation_around_y));
-    gyro_degrees[2] = -(-gyro_degrees[2] * (1.0 - m_complementary_ratio) - (m_complementary_ratio * rotation_around_z));
+    // Convert degrees per second and add the complementary filter with accelerometer degrees
+    gyro_degrees[0] = (1.0 - m_complementary_ratio) * (gyro_degrees[0] + gyro_angular[0] * elapsed_time_sec) + m_complementary_ratio * rotation_around_x;
+    gyro_degrees[1] = (1.0 - m_complementary_ratio) * (gyro_degrees[1] + gyro_angular[1] * elapsed_time_sec) + m_complementary_ratio * rotation_around_y;
+    gyro_degrees[2] = (1.0 - m_complementary_ratio) * (gyro_degrees[2] + gyro_angular[2] * elapsed_time_sec) + m_complementary_ratio * rotation_around_z;
 
     // I dont want to track how many times the degrees went over the 360 degree mark, no point.
     while (gyro_degrees[0] > 180.0) {
@@ -280,6 +271,98 @@ void convert_angular_rotation_to_degrees(float* gyro_angular, float* gyro_degree
         gyro_degrees[1] += 360.0;
     }
 
+    while (gyro_degrees[2] > 180.0) {
+        gyro_degrees[2] -= 360.0;
+    }
+    while (gyro_degrees[2] < -180.0) {
+        gyro_degrees[2] += 360.0;
+    }
+}
+
+
+void convert_angular_rotation_to_degrees_x_y(float* gyro_angular, float* gyro_degrees, float rotation_around_x, float rotation_around_y, int64_t time, bool set_timestamp){
+    // Convert angular velocity to actual degrees that it moved and add it to the integral (dead reckoning not PID)
+
+    if(m_previous_time == 0){
+        m_previous_time = time;
+        return;
+    }
+
+    double elapsed_time_sec= (((double)time/1000.0)-((double)m_previous_time/1000.0)) / 1000.0;
+    if(set_timestamp){
+        m_previous_time = time;
+    }
+
+    // Convert degrees per second and add the complementary filter with accelerometer degrees
+    gyro_degrees[0] = (1.0 - m_complementary_ratio) * (gyro_degrees[0] + gyro_angular[0] * elapsed_time_sec) + m_complementary_ratio * rotation_around_x;
+    gyro_degrees[1] = (1.0 - m_complementary_ratio) * (gyro_degrees[1] + gyro_angular[1] * elapsed_time_sec) + m_complementary_ratio * rotation_around_y;
+
+    // I dont want to track how many times the degrees went over the 360 degree mark, no point.
+    while (gyro_degrees[0] > 180.0) {
+        gyro_degrees[0] -= 360.0;
+    }
+    while (gyro_degrees[0] < -180.0) {
+        gyro_degrees[0] += 360.0;
+    }
+
+    while (gyro_degrees[1] > 180.0) {
+        gyro_degrees[1] -= 360.0;
+    }
+    while (gyro_degrees[1] < -180.0) {
+        gyro_degrees[1] += 360.0;
+    }
+}
+
+
+float angleDifference(float a, float b) {
+
+    /// How to understand this
+    //  So -177 % 179 = 2
+    //  2 - 180 = -178
+    // -178 < -180 False
+    // -178 returned
+
+    // If it moves in the same direction over time it will be -178, -179, -180, 180, 181
+
+    //  So 177 % -179 = -2
+    //  - 2 - 180 = -182
+    // -182 < -180 True
+    // -182+360 = 178 returned
+
+    // fmodf is modulus operator (%) for floats
+    float diff = fmodf(b - a + 180, 360) - 180;
+    return diff < -180 ? diff + 360 : diff;
+}
+
+void convert_angular_rotation_to_degrees_z(float* gyro_angular, float* gyro_degrees, float rotation_around_z, int64_t time){
+    // Convert angular velocity to actual degrees that it moved and add it to the integral (dead reckoning not PID)
+
+    if(m_previous_time == 0){
+        m_previous_time = time;
+        return;
+    }
+
+    double elapsed_time_sec= (((double)time/1000.0)-((double)m_previous_time/1000.0)) / 1000.0;
+    m_previous_time = time;
+
+    // Gyro without magnetometer
+    float gyro_integration = gyro_degrees[2] + gyro_angular[2] * elapsed_time_sec;
+
+    // Use the angleDifference function to find the smallest difference between gyro_integration and rotation_around_z
+    float angle_diff = angleDifference(gyro_integration, rotation_around_z);
+
+    // Use the angle difference value as the magnetometer in this sensor fusion 
+
+    // Works bad
+    // gyro_degrees[2] = (1.0 - m_complementary_ratio) * (gyro_integration) + m_complementary_ratio * angle_diff;
+
+    // Works not as bad, but still bad
+    // gyro_degrees[2] = (1.0 - m_complementary_ratio) * gyro_integration + m_complementary_ratio * (gyro_integration + angle_diff);
+
+    // Works very good adding it on top.
+    gyro_degrees[2] = gyro_integration + m_complementary_ratio * angle_diff;
+
+    // I dont want to track how many times the degrees went over the 360 degree mark, no point.
     while (gyro_degrees[2] > 180.0) {
         gyro_degrees[2] -= 360.0;
     }
