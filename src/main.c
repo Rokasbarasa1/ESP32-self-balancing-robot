@@ -519,6 +519,11 @@ void get_initial_position(){
     gyro_degrees[2] = magnetometer_z_rotation;
 
     printf("Initial location x: %.2f y: %.2f, z: %.2f\n", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
+
+
+    // Set the desired yaw as the initial one
+    target_yaw = gyro_degrees[2];
+
 }
 
 
