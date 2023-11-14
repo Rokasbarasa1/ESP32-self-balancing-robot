@@ -133,7 +133,7 @@ float soft_iron_correction[3][3] = {
 };
 
 float accelerometer_correction[3] = {
-    -0.031383, -0.01075, 1.034993
+    -0.031383, -0.007, 1.034993
 };
 float gyro_correction[3] = {
     -6.133409, 1.828601, -0.318321
@@ -163,18 +163,10 @@ double error_position_A = 0;
 double error_position_B = 0;
 
 // Actual PID adjustment for pitch
-const double base_pitch_master_gain = 1.4;
+const double base_pitch_master_gain = 1.0;
 const double base_pitch_gain_p = 15.0;
 const double base_pitch_gain_i = 350.0;
 const double base_pitch_gain_d = 0.31;
-
-// For medium yellow wheels
-// mg-1.0 p-15.0 i-350.0 d-0.31
-// accelerometer correction -0.031383, -0.014, 1.034993
-
-// For small green wheels
-// mg-1.4 p-15.0 i-400.0 d-0.31
-// accelerometer correction -0.031383, -0.009, 1.034993
 
 // PID for speed
 const float speed_gain_p = 0.0; 
@@ -196,7 +188,7 @@ const float rpm_gain_p = 0.0000;
 const float rpm_gain_i = 0.015;
 const float rpm_gain_d = 0.0000;
 
-// Used for smooth changes to PID while using remote control. Dont touch
+// Used for smooth changes to PID while using remote control. Do not touch this
 double pitch_master_gain = base_pitch_master_gain;
 double pitch_gain_p = base_pitch_gain_p;
 double pitch_gain_i = base_pitch_gain_i;
@@ -222,17 +214,14 @@ double wheel_speed[] = {0,0};
 double wheel_rpm[] = {0,0};
 double wheel_position[] = {0,0};
 
-double target_dead_zone_percent = 0.1;
-
 double target_pitch = 0.0;
 double target_yaw = 0.0;
 
-// Remote control settings
+// Remote control settings ############################################################################################
 double max_yaw_attack = 40.0;
 double max_pitch_attack = 1.5;
 double pitch_attack_step = 0.1;
 double max_rpm_on_pitch = 35;
-// double min_rpm_on_pitch = 35;
 
 int8_t last_robot_direction = 0; // -1 negative degrees, 1 positive degrees, 0 nothing
 uint8_t throttle = 0;
@@ -240,10 +229,8 @@ uint8_t yaw = 50;
 uint8_t last_yaw = 50;
 uint8_t pitch = 50;
 uint8_t roll = 50;
-
 bool shit_encoder_mode = true;
 bool slowing_lock = false;
-
 double last_raw_yaw = 0;
 double delta_yaw = 0;
 
@@ -257,10 +244,10 @@ void app_main() {
 
     struct pid pitch_pid = pid_init(pitch_master_gain * pitch_gain_p, pitch_master_gain * pitch_gain_i, pitch_master_gain * pitch_gain_d, 0.0, esp_timer_get_time(), 100.0, -100.0, 1);
     struct pid yaw_pid = pid_init(yaw_gain_p, yaw_gain_i, yaw_gain_d, 0.0, esp_timer_get_time(), 0, 0, 0);
-    struct pid wheel_speed_A_pid = pid_init(speed_gain_p, speed_gain_i, speed_gain_d, 0.0, esp_timer_get_time(), 0, 0, 0);
-    struct pid wheel_speed_B_pid = pid_init(speed_gain_p, speed_gain_i, speed_gain_d, 0.0, esp_timer_get_time(), 0, 0, 0);
-    struct pid wheel_position_A_pid = pid_init(position_gain_p, position_gain_i, position_gain_d, 0.0, esp_timer_get_time(), 0, 0, 0);
-    struct pid wheel_position_B_pid = pid_init(position_gain_p, position_gain_i, position_gain_d, 0.0, esp_timer_get_time(), 0, 0, 0);
+    // struct pid wheel_speed_A_pid = pid_init(speed_gain_p, speed_gain_i, speed_gain_d, 0.0, esp_timer_get_time(), 0, 0, 0);
+    // struct pid wheel_speed_B_pid = pid_init(speed_gain_p, speed_gain_i, speed_gain_d, 0.0, esp_timer_get_time(), 0, 0, 0);
+    // struct pid wheel_position_A_pid = pid_init(position_gain_p, position_gain_i, position_gain_d, 0.0, esp_timer_get_time(), 0, 0, 0);
+    // struct pid wheel_position_B_pid = pid_init(position_gain_p, position_gain_i, position_gain_d, 0.0, esp_timer_get_time(), 0, 0, 0);
     struct pid wheel_rpm_pid = pid_init(rpm_gain_p, rpm_gain_i, rpm_gain_d, max_rpm_on_pitch, esp_timer_get_time(), 0, 0, 0);
 
     printf("\n\n====START OF LOOP====\n\n");
@@ -269,10 +256,10 @@ void app_main() {
         mpu6050_get_accelerometer_readings_gravity(acceleration_data);
         mpu6050_get_gyro_readings_dps(gyro_angular);
         gy271_magnetometer_readings_micro_teslas(magnetometer_data);
-        wheel_speed[0] = optical_encoder_get_hertz(optical_encoder_2_result, 2.55, -2.55);
-        wheel_speed[1] = optical_encoder_get_hertz(optical_encoder_1_result, 2.55, -2.55);
-        wheel_position[0] = optical_encoder_get_count(optical_encoder_2_result);
-        wheel_position[1] = optical_encoder_get_count(optical_encoder_1_result);
+        // wheel_speed[0] = optical_encoder_get_hertz(optical_encoder_2_result, 2.55, -2.55);
+        // wheel_speed[1] = optical_encoder_get_hertz(optical_encoder_1_result, 2.55, -2.55);
+        // wheel_position[0] = optical_encoder_get_count(optical_encoder_2_result);
+        // wheel_position[1] = optical_encoder_get_count(optical_encoder_1_result);
         wheel_rpm[0] = optical_encoder_get_rpm(optical_encoder_2_result, 200, -200);
         wheel_rpm[1] = optical_encoder_get_rpm(optical_encoder_1_result, 200, -200);
 
@@ -410,7 +397,7 @@ void app_main() {
                 send_pid_added_info_to_remote();
             }
 
-            rx_type[0] = '\0'; // Clear out the string
+            rx_type[0] = '\0'; // Clear out the string by setting its first char to string terminator
         }
 
         // React to the data received from sensors and remote control ###########################################################################################################
@@ -444,8 +431,6 @@ void app_main() {
             if(max_rpm_on_pitch < wheel_rpm[0] && !slowing_lock){
                 // Check which direction to adjust to
                 if( new_target_pitch < 0){
-                    printf("ADJUSTING ");
-
                     pid_set_desired_value(&wheel_rpm_pid, max_rpm_on_pitch);
                     // more than zero so adjust back
                     new_target_pitch = target_pitch - pid_get_error(&wheel_rpm_pid, wheel_rpm[0], esp_timer_get_time());
@@ -453,8 +438,6 @@ void app_main() {
                     // remember the heading
                     last_robot_direction = 1;
                 }else if(new_target_pitch > 0){
-                    printf("ADJUSTING ");
-
                     pid_set_desired_value(&wheel_rpm_pid, max_rpm_on_pitch);
                     // less than zero so adjust forward
                     new_target_pitch = target_pitch + pid_get_error(&wheel_rpm_pid, wheel_rpm[0], esp_timer_get_time());
@@ -467,7 +450,6 @@ void app_main() {
 
             // Slow down the robot when the desired pitch goes to 0 and there was adjusting action before.
             if(target_pitch == 0.0 && last_robot_direction != 0 && wheel_rpm[0] != 0){
-                printf("SLOWING ");
                 slowing_lock = true;
                 pid_set_desired_value(&wheel_rpm_pid, 0);
                 if(last_robot_direction == 1){
@@ -480,9 +462,6 @@ void app_main() {
                 slowing_lock = false;
                 pid_reset_integral_sum(&wheel_rpm_pid);
             }
-
-            printf("PITCH TARGET, %6.2f, %6.2f, ", target_pitch, new_target_pitch);
-
 
             // Update pid targets by transforming remote input
             pid_set_desired_value(&pitch_pid, new_target_pitch);
@@ -507,11 +486,11 @@ void app_main() {
         // Monitoring ###########################################################################################################################################################
 
         // printf("ACCEL, %6.2f, %6.2f, %6.2f, ", acceleration_data[0], acceleration_data[1], acceleration_data[2]);
-        printf("GYRO, %f, %f, %f, ", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
+        // printf("GYRO, %f, %f, %f, ", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
         // printf("MAG, %f, %f, %f, ", magnetometer_data[0], magnetometer_data[1], magnetometer_data[2]);
-        printf("RPM, %6.2f, %6.2f, ", wheel_rpm[0], wheel_rpm[1]);
+        // printf("RPM, %6.2f, %6.2f, ", wheel_rpm[0], wheel_rpm[1]);
         // printf("TARGET, %6.2f, %6.2f, ", target_pitch, target_yaw);
-        printf("\n"); // End the line after all the data has been printed. So that all data is on one line
+        // printf("\n"); // End the line after all the data has been printed. So that all data is on one line
 
         handle_loop_timing(); // Make sure the loop has exact timing as specified in refresh rate
     }
@@ -533,13 +512,14 @@ void check_calibrations(){
     find_accelerometer_error(1000);
     find_gyro_error(300);
 
+    
+    // I dont use the code bellow anymore but maybe you will
 
     // Testing with different motor drivers
     // TB6612 and power bank - A 31.5  B 26.9
     // TB6612 and 3 x 18650 cells - A 15.5  B 12.5  
     // L298 and 2 x 18650 cells - A 69.8   B 70  // Worked very good with above settings though, very smooth
     // L298 and 3 x 18650 cells - A 52.5   B 52.5  
-
 
     uint8_t movements_in_a_row = 5;
     uint8_t move_counter = 0;

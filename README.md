@@ -15,6 +15,21 @@ This is my self balancing robot. It is the second version of the robot with impr
 
 [Tall robot with small wheels](https://www.youtube.com/shorts/x2-bWFcIDXM)
 
+
+# Building it and uploading it
+
+I made this in platformIO so running and building is straight forward, but you still need to deal with cmake in this. What i would do if i was on a different computer installing all of this is i would delete all the cmake stuff in the repo that you download and i would look up the tutorial on how to setup the esp32 on platformIO. This is going to be a much better experience thant trying to figure out what you did wrong. After you figure how to flash the esp32 with a fresh project just import the main.c and everything from the lib folder.
+
+# Robot setup steps.
+
+- Run the gyro and accelerometer calibration code and apply the corrections to them. Double check that the correction for the accelerometer is actually pointing upwards. Adjust it if necessary.
+
+- Calibrate the magnetometer in steps listed [here](./lib/gy271_qmc5883l/calibration/calibration.md)
+
+- Test the PID for the pitch and calibrate it accordingly. Please look at how i did it in the design PID section.
+
+- Test the yaw pid and adjust it to your liking. Don't be too specific on this one.
+
 # Design decisions:
 
 - **CONTROLLER** ESP32 for the controller. It is overkill for this but it is good for me because it gives me experience with Espressiv IDF. I am using C language to program it as I really don't like C++. It is not a very nice experience though. I wish i have gone for something that doesn't have a freertos as default. I think a lot of my problems with it boils down to my restricted setup on PlatfromIO with it. I just followed some youtube tutorial on its setup on platformIO. <br/><br/>Sometimes the esp32 has a hang on the i2c communication up to 1 second and that makes the robot fall. No idea what is causing that still. Not a very good experience. It also started to have difficulty flashing recently, my code didn't change that much and i don't do that much with my UART usb connection but it seems to be having difficulty now.<br><br>The ESP32 also doesn't have many usable GPIO pins, a lot of its pins are already used for other functionality of the ESP32 or are needed for bootup. I got really close to running out of pins on this project.
