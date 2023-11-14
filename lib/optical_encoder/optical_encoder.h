@@ -24,5 +24,6 @@ void optical_encoder_set_count(int8_t encoder_id, int32_t count);
 void optical_encoder_set_clockwise(int8_t encoder_id, bool clockwise);
 double optical_encoder_get_speed_meters_per_second(int8_t encoder_id, double max, double min);
 double optical_encoder_get_hertz(int8_t encoder_id, double max, double min);
+double optical_encoder_get_rpm(int8_t encoder_id, double max, double min);
 bool optical_encoder_check_if_value_bad(int8_t encoder_id);
 bool optical_encoder_get_clockwise(int8_t encoder_id);

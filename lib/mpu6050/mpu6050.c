@@ -109,6 +109,7 @@ bool init_mpu6050(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_ca
     return true;
 }
 
+// Read accelerometer in gravity units
 void mpu6050_get_accelerometer_readings_gravity(float* data){
     uint8_t data_register[] = {ACCEL_XOUT_H_REG};
     uint8_t retrieved_data[] = {0,0,0,0,0,0};
@@ -136,6 +137,7 @@ void mpu6050_get_accelerometer_readings_gravity(float* data){
     data[2] = Z_out - (m_accelerometer_correction[2] - 1);
 }
 
+// Read gyro in degrees per second units 
 void mpu6050_get_gyro_readings_dps(float* data){
     uint8_t data_register[] = {GYRO_XOUT_H_REG};
     uint8_t retrieved_data[] = {0,0,0,0,0,0};
@@ -163,6 +165,7 @@ void mpu6050_get_gyro_readings_dps(float* data){
     data[2] = Z_out - (m_gyro_correction[2]);
 }
 
+
 void calculate_pitch_and_roll(float* data, float *roll, float *pitch){
     float x = data[0];
     float y = data[1];
@@ -181,6 +184,7 @@ void calculate_pitch_and_roll(float* data, float *roll, float *pitch){
     // i put a minus on the pitch calculation as i have found that the pitch has opposite values of actual
 }
 
+// Get the x and y degrees from accelerometer.
 void calculate_degrees_x_y(float *data, float *rotation_around_x, float *rotation_around_y)
 {
     float x = data[0];
@@ -192,6 +196,7 @@ void calculate_degrees_x_y(float *data, float *rotation_around_x, float *rotatio
     *rotation_around_y = -(atan2f(x, sqrtf(y * y + z * z)) * (180.0 / M_PI));
 }
 
+// Get many values of the accelerometer error and average them together. Then print out the result
 void find_accelerometer_error(uint64_t sample_size)
 {
     float x_sum = 0, y_sum = 0, z_sum = 0;
@@ -215,6 +220,7 @@ void find_accelerometer_error(uint64_t sample_size)
         (z_sum / sample_size) -1 );
 }
 
+// Get many values of the gyro error and average them together. Then print out the result
 void find_gyro_error(uint64_t sample_size)
 {
 
@@ -240,9 +246,8 @@ void find_gyro_error(uint64_t sample_size)
         z_sum / sample_size);
 }
 
+// Do complementary filter for x(pitch) and y(roll) and z(yaw). Combine accelerometer and gyro to get a more usable gyro value. Please make sure the coefficient is scaled by refresh rate. It helps a lot.
 void convert_angular_rotation_to_degrees(float* gyro_angular, float* gyro_degrees, float rotation_around_x, float rotation_around_y, float rotation_around_z, int64_t time){
-    // Convert angular velocity to actual degrees that it moved and add it to the integral (dead reckoning not PID)
-
     if(m_previous_time == 0){
         m_previous_time = time;
         return;
@@ -279,9 +284,8 @@ void convert_angular_rotation_to_degrees(float* gyro_angular, float* gyro_degree
     }
 }
 
-
+// Do complementary filter for x(pitch) and y(roll). Combine accelerometer and gyro to get a more usable gyro value. Please make sure the coefficient is scaled by refresh rate. It helps a lot.
 void convert_angular_rotation_to_degrees_x_y(float* gyro_angular, float* gyro_degrees, float rotation_around_x, float rotation_around_y, int64_t time, bool set_timestamp){
-    // Convert angular velocity to actual degrees that it moved and add it to the integral (dead reckoning not PID)
 
     if(m_previous_time == 0){
         m_previous_time = time;
@@ -313,8 +317,8 @@ void convert_angular_rotation_to_degrees_x_y(float* gyro_angular, float* gyro_de
     }
 }
 
-
-float angleDifference(float a, float b) {
+// Find the shortest value between two angles. Range -180 to 180
+float angle_difference(float a, float b) {
 
     /// How to understand this
     //  So -177 % 179 = 2
@@ -334,6 +338,7 @@ float angleDifference(float a, float b) {
     return diff < -180 ? diff + 360 : diff;
 }
 
+// Do complementary filter to merge magnetometer and gyro values
 void convert_angular_rotation_to_degrees_z(float* gyro_angular, float* gyro_degrees, float rotation_around_z, int64_t time){
     // Convert angular velocity to actual degrees that it moved and add it to the integral (dead reckoning not PID)
 
@@ -348,8 +353,8 @@ void convert_angular_rotation_to_degrees_z(float* gyro_angular, float* gyro_degr
     // Gyro without magnetometer
     float gyro_integration = gyro_degrees[2] + gyro_angular[2] * elapsed_time_sec;
 
-    // Use the angleDifference function to find the smallest difference between gyro_integration and rotation_around_z
-    float angle_diff = angleDifference(gyro_integration, rotation_around_z);
+    // Use the angle_difference function to find the smallest difference between gyro_integration and rotation_around_z
+    float angle_diff = angle_difference(gyro_integration, rotation_around_z);
 
     // Use the angle difference value as the magnetometer in this sensor fusion 
 
@@ -359,7 +364,7 @@ void convert_angular_rotation_to_degrees_z(float* gyro_angular, float* gyro_degr
     // Works not as bad, but still bad
     // gyro_degrees[2] = (1.0 - m_complementary_ratio) * gyro_integration + m_complementary_ratio * (gyro_integration + angle_diff);
 
-    // Works very good adding it on top.
+    // Works very good adding it on top. Not as good as raw magnetometer yaw though
     gyro_degrees[2] = gyro_integration + m_complementary_ratio * angle_diff;
 
     // I dont want to track how many times the degrees went over the 360 degree mark, no point.

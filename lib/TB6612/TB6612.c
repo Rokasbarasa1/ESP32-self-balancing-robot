@@ -79,10 +79,10 @@ void init_TB6612(uint motor_a_opt1, uint motor_a_opt2, uint motor_a_pwm, uint mo
 
 // but they start spinning at 30 speed so ...
 void change_speed_motor_B(float speed, float trim_speed){
-    if( speed < -80){
-        speed = -80;
-    }else if( speed > 80){
-        speed = 80;
+    if( speed < -100){
+        speed = -100;
+    }else if( speed > 100){
+        speed = 100;
     }
 
     if(speed > 0){
@@ -114,10 +114,10 @@ void change_speed_motor_B(float speed, float trim_speed){
 
 void change_speed_motor_A(float speed, float trim_speed){
     // Clamping extreme values
-    if( speed < -70){
-        speed = -70;
-    }else if( speed > 70){
-        speed = 70;
+    if( speed < -100){
+        speed = -100;
+    }else if( speed > 100){
+        speed = 100;
     }
 
     if(speed > 0){

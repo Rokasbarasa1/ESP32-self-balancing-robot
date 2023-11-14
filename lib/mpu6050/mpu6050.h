@@ -28,4 +28,5 @@ void find_accelerometer_error(uint64_t sample_size);
 void find_gyro_error(uint64_t sample_size);
 void convert_angular_rotation_to_degrees(float* gyro_angular, float* gyro_degrees, float rotation_around_x, float rotation_around_y, float rotation_around_z, int64_t time);
 void convert_angular_rotation_to_degrees_x_y(float* gyro_angular, float* gyro_degrees, float rotation_around_x, float rotation_around_y, int64_t time, bool set_timestamp);
+float angle_difference(float a, float b);
 void convert_angular_rotation_to_degrees_z(float* gyro_angular, float* gyro_degrees, float rotation_around_z, int64_t time);

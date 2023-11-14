@@ -40,8 +40,6 @@ char* generate_message_pid_values_nrf24(double base_proportional, double base_in
 void handle_loop_timing();
 double map_value(double value, double input_min, double input_max, double output_min, double output_max);
 double apply_dead_zone(double value, double max_value, double min_value, double dead_zone);
-// void calculate_speeds_no_yaw(float* acceleration, float* gyro_degrees, float* speed, float refresh_rate);
-// void calculate_speeds(float* acceleration, float* gyro_degrees, float* speed, float refresh_rate);
 
 // ESP32 DevkitC v4 - ESP-WROOM-32D - 160 Mhz
 
@@ -86,22 +84,18 @@ double apply_dead_zone(double value, double max_value, double min_value, double 
  */
 
 /**
- * Encoder 1
+ * Encoder 1 Wheel B
  * 
  * GPIO4
  * 
  */
 
 /**
- * Encoder 1
+ * Encoder 2 Wheel A
  * 
  * GPIO15
  * 
  */
-
-
-// Wheel A - encoder 2
-// Wheel B - encoder 1
 
 
 // Sensor corrections #################################################################################
@@ -139,7 +133,7 @@ float soft_iron_correction[3][3] = {
 };
 
 float accelerometer_correction[3] = {
-    -0.031383, -0.01, 1.034993
+    -0.031383, -0.01075, 1.034993
 };
 float gyro_correction[3] = {
     -6.133409, 1.828601, -0.318321
@@ -160,13 +154,6 @@ uint8_t tx_address[5] = {0xEE, 0xDD, 0xCC, 0xBB, 0xAA};
 char rx_data[32];
 char rx_type[32];
 
-// Control with radio ####################################################################################
-uint8_t throttle = 0;
-uint8_t yaw = 50;
-uint8_t pitch = 50;
-uint8_t roll = 50;
-bool data_received = false;
-
 // PID errors ##############################################################################################
 double error_pitch = 0;
 double error_yaw = 0;
@@ -176,10 +163,18 @@ double error_position_A = 0;
 double error_position_B = 0;
 
 // Actual PID adjustment for pitch
-const double base_pitch_master_gain = 1.0; // 1 - 100%
+const double base_pitch_master_gain = 1.4;
 const double base_pitch_gain_p = 15.0;
-const double base_pitch_gain_i = 250.0;
+const double base_pitch_gain_i = 350.0;
 const double base_pitch_gain_d = 0.31;
+
+// For medium yellow wheels
+// mg-1.0 p-15.0 i-350.0 d-0.31
+// accelerometer correction -0.031383, -0.014, 1.034993
+
+// For small green wheels
+// mg-1.4 p-15.0 i-400.0 d-0.31
+// accelerometer correction -0.031383, -0.009, 1.034993
 
 // PID for speed
 const float speed_gain_p = 0.0; 
@@ -195,6 +190,11 @@ const float position_gain_d = 0.0;
 const float yaw_gain_p = 0.6; 
 const float yaw_gain_i = 0.0;
 const float yaw_gain_d = 0.0;
+
+// PID for RPM
+const float rpm_gain_p = 0.0000; 
+const float rpm_gain_i = 0.015;
+const float rpm_gain_d = 0.0000;
 
 // Used for smooth changes to PID while using remote control. Dont touch
 double pitch_master_gain = base_pitch_master_gain;
@@ -219,32 +219,51 @@ float acceleration_speed[] = {0,0,0};
 int8_t optical_encoder_1_result = -1;
 int8_t optical_encoder_2_result = -1;
 double wheel_speed[] = {0,0};
+double wheel_rpm[] = {0,0};
 double wheel_position[] = {0,0};
 
-double target_dead_zone_percent = 0.0;
+double target_dead_zone_percent = 0.1;
 
 double target_pitch = 0.0;
 double target_yaw = 0.0;
 
+// Remote control settings
+double max_yaw_attack = 40.0;
+double max_pitch_attack = 1.5;
+double pitch_attack_step = 0.1;
+double max_rpm_on_pitch = 35;
+// double min_rpm_on_pitch = 35;
+
+int8_t last_robot_direction = 0; // -1 negative degrees, 1 positive degrees, 0 nothing
+uint8_t throttle = 0;
+uint8_t yaw = 50;
+uint8_t last_yaw = 50;
+uint8_t pitch = 50;
+uint8_t roll = 50;
+
+bool shit_encoder_mode = true;
+bool slowing_lock = false;
+
+double last_raw_yaw = 0;
+double delta_yaw = 0;
+
 void app_main() {
-
     printf("STARTING PROGRAM\n"); 
-
     init_esp32_peripherals();
     init_sensors();
     init_loop_timer();
     // check_calibrations();
     get_initial_position();
 
-    printf("\n\n====START OF LOOP====\n\n");
-    
-    struct pid pitch_pid = pid_init(pitch_master_gain * pitch_gain_p, pitch_master_gain * pitch_gain_i, pitch_master_gain * pitch_gain_d, 0.0, esp_timer_get_time(), 1000.0, -1000.0, 1);
-    struct pid yaw_pid = pid_init(yaw_gain_p, yaw_gain_i, yaw_gain_d, 0.0, esp_timer_get_time(), 1000.0, -1000.0, 1);
-    struct pid wheel_speed_A_pid = pid_init(speed_gain_p, speed_gain_i, speed_gain_d, 0.0, esp_timer_get_time(), 1000.0, -1000.0, 1);
-    struct pid wheel_speed_B_pid = pid_init(speed_gain_p, speed_gain_i, speed_gain_d, 0.0, esp_timer_get_time(), 1000.0, -1000.0, 1);
-    struct pid wheel_position_A_pid = pid_init(position_gain_p, position_gain_i, position_gain_d, 0.0, esp_timer_get_time(), 1000.0, -1000.0, 1);
-    struct pid wheel_position_B_pid = pid_init(position_gain_p, position_gain_i, position_gain_d, 0.0, esp_timer_get_time(), 1000.0, -1000.0, 1);
+    struct pid pitch_pid = pid_init(pitch_master_gain * pitch_gain_p, pitch_master_gain * pitch_gain_i, pitch_master_gain * pitch_gain_d, 0.0, esp_timer_get_time(), 100.0, -100.0, 1);
+    struct pid yaw_pid = pid_init(yaw_gain_p, yaw_gain_i, yaw_gain_d, 0.0, esp_timer_get_time(), 0, 0, 0);
+    struct pid wheel_speed_A_pid = pid_init(speed_gain_p, speed_gain_i, speed_gain_d, 0.0, esp_timer_get_time(), 0, 0, 0);
+    struct pid wheel_speed_B_pid = pid_init(speed_gain_p, speed_gain_i, speed_gain_d, 0.0, esp_timer_get_time(), 0, 0, 0);
+    struct pid wheel_position_A_pid = pid_init(position_gain_p, position_gain_i, position_gain_d, 0.0, esp_timer_get_time(), 0, 0, 0);
+    struct pid wheel_position_B_pid = pid_init(position_gain_p, position_gain_i, position_gain_d, 0.0, esp_timer_get_time(), 0, 0, 0);
+    struct pid wheel_rpm_pid = pid_init(rpm_gain_p, rpm_gain_i, rpm_gain_d, max_rpm_on_pitch, esp_timer_get_time(), 0, 0, 0);
 
+    printf("\n\n====START OF LOOP====\n\n");
     while (true){
         // Read sensor data ######################################################################################################################
         mpu6050_get_accelerometer_readings_gravity(acceleration_data);
@@ -254,69 +273,122 @@ void app_main() {
         wheel_speed[1] = optical_encoder_get_hertz(optical_encoder_1_result, 2.55, -2.55);
         wheel_position[0] = optical_encoder_get_count(optical_encoder_2_result);
         wheel_position[1] = optical_encoder_get_count(optical_encoder_1_result);
+        wheel_rpm[0] = optical_encoder_get_rpm(optical_encoder_2_result, 200, -200);
+        wheel_rpm[1] = optical_encoder_get_rpm(optical_encoder_1_result, 200, -200);
 
         // Convert the sensor data to data that is useful
-        fix_mag_axis(magnetometer_data); // Switches around the x and the y to match mpu6050 outputs
-        calculate_degrees_x_y(acceleration_data, &accelerometer_x_rotation, &accelerometer_y_rotation);
+        fix_mag_axis(magnetometer_data); // Switches around the x and the y of the magnetometer to match mpu6050 outputs
+        calculate_degrees_x_y(acceleration_data, &accelerometer_x_rotation, &accelerometer_y_rotation); // Get roll and pitch from the data. I call it x and y. Ranges -90 to 90. 
+
+        // My mpu6050 has a drift problem when rotating around z axis. I have only seen Joop Broking having this problem.
+        // Raw yaw - yaw without tilt adjustment
+        // Yaw - yaw with tilt adjustment
+        // Get raw yaw. The results of this adjustment have to modify the values of gyro degrees before complementary filter. So only the non tilt adjusted yaw is available
+        calculate_yaw(magnetometer_data, &magnetometer_z_rotation);
+
+        if(yaw != 50){ // This is not an issue when not rotating.
+            // Joop Brokings method did not work for me and it didn't make sense subtracting scaled total yaw. I subtract delta yaw instead
+            delta_yaw = angle_difference(magnetometer_z_rotation, last_raw_yaw); // Helper function to handle wrapping
+
+            // gyro_angular[0] -= delta_yaw * -16.5; 
+            gyro_angular[0] -= delta_yaw * -5.0; 
+
+            // This robot doesn't use the y axis so i ignore it 
+        }
+
+        // Save the raw yaw for next loop. No mater if yaw changes or not. Need to know the latest one
+        last_raw_yaw = magnetometer_z_rotation;
+
+        // Use complementary filter to correct the gyro drift. 
         convert_angular_rotation_to_degrees_x_y(gyro_angular, gyro_degrees, accelerometer_x_rotation, accelerometer_y_rotation, esp_timer_get_time(), true);
 
+        // Get yaw that is adjusted by x and y degrees
         calculate_yaw_tilt_compensated(magnetometer_data, &magnetometer_z_rotation, gyro_degrees[0], gyro_degrees[1]);
-        // Just calling this to set the last timestamp
-        // convert_angular_rotation_to_degrees_z(gyro_angular, gyro_degrees, magnetometer_z_rotation, esp_timer_get_time());
-        // I trust the magnetometer more than the gyro in this case
+
+        // Complementary filter did not work good for magnetometer+gyro. 
+        // Gyro just too slow and inaccurate for this.
+        // I trust the magnetometer more than the gyro in this case.
         gyro_degrees[2] = magnetometer_z_rotation;
 
         // Receive remote control data ###########################################################################################################
-        // Initialize values to be default again
-        throttle = 0;
-        // yaw = gyro_degrees[2];// Use current yaw as default 
-        yaw = 0;
-        pitch = 50;
-        roll = 50;
-        data_received = false;
-        
         if(nrf24_data_available(1)){
+            
             nrf24_receive(rx_data);
             
             // Get the type of request
             extract_request_type(rx_data, strlen(rx_data), rx_type);
-            
-            printf("'%s'\n", rx_type);
-            for(uint i = 0; i < strlen(rx_data); i++){
-                printf("%c", rx_data[i]);
-            }
-            printf("\n");
-            
 
             if(strcmp(rx_type, "joystick") == 0){
-                printf("Got joystick\n");
-                
-                uint8_t throttle = 0;
-                uint8_t yaw = 50;
-                uint8_t pitch = 50;
-                uint8_t roll = 50;
 
-                extract_joystick_request_values(rx_data, strlen(rx_data), &throttle, &yaw, &pitch, &roll);
 
-                // i dont know how to handle the switch from -180 to 180 degrees yet
-                if(gyro_degrees[2] > 140){
-                    target_yaw = 140.0;
-                }else if(gyro_degrees[2] < -140){
-                    target_yaw = -140.0;
-                }else{
-                    target_yaw = map_value(yaw, 0.0, 100.0, -40.0, 40.0) + gyro_degrees[2];
+                extract_joystick_request_values(rx_data, strlen(rx_data), &throttle, &yaw, &roll, &pitch);
+
+                // Check if pitch is neutral
+                if(pitch == 50){
+
+                    // Had some issues with floats not being zero.
+                    // If value is between pitch attack and negative pitch attack then just set it to zero
+                    if(target_pitch < pitch_attack_step/2 && target_pitch > -pitch_attack_step/2){
+                        target_pitch = 0.0;
+                    }
+
+                    // If value is above pitch attack values 
+                    // Start slowing going back to zero
+                    if(target_pitch > 0 && target_pitch != 0){
+                        target_pitch = target_pitch - pitch_attack_step;
+                    }else if(target_pitch < 0  && target_pitch != 0){
+                        target_pitch = target_pitch + pitch_attack_step;
+                    }
+                }else if (pitch != 50){
+                    // If pitch is not neutral start increasing into some direction.
+
+                    if(shit_encoder_mode){
+                        // Because my encoder is shit it prefers to have the extremes of pitch as 
+                        // that doesn't overwhelm the pid of it.
+                        if(pitch > 60){
+                            target_pitch = target_pitch + pitch_attack_step;
+                        }else if(pitch < 40){
+                            target_pitch = target_pitch - pitch_attack_step;
+                        }
+                    }else{
+                        target_pitch = target_pitch + map_value(pitch, 0.0, 100.0, -pitch_attack_step, pitch_attack_step);
+                    }
                 }
 
-            }else if(strcmp(rx_type, "pid") == 0){
-                printf("Got pid\n");
+                // Make sure that the value is in the boundaries
+                if(target_pitch > max_pitch_attack){
+                    target_pitch = max_pitch_attack;
+                }else if(target_pitch < -max_pitch_attack){
+                    target_pitch = -max_pitch_attack;
+                }
 
+                // Handle the yaw value
+                if(yaw != 50){
+                    // There is an issue with the remote sometimes sending a 0 yaw
+
+                    target_yaw = gyro_degrees[2] + map_value(yaw, 0.0, 100.0, -max_yaw_attack, max_yaw_attack);
+                    
+                    // handle the switch from -180 to 180 degrees
+                    if(target_yaw > 180.0){
+                        target_yaw = target_yaw - 360.0;
+                    }else if(target_yaw < -180.0){
+                        target_yaw = target_yaw + 360.0;
+                    }
+                }
+
+                // Reset the yaw to the current degrees
+                if(last_yaw != 50 && yaw == 50){
+                    target_yaw = gyro_degrees[2];
+                }
+
+                last_yaw = yaw;
+            }else if(strcmp(rx_type, "pid") == 0){
                 double added_proportional = 0;
                 double added_integral = 0;
                 double added_derivative = 0;
                 double added_master_gain = 0;
 
                 extract_pid_request_values(rx_data, strlen(rx_data), &added_proportional, &added_integral, &added_derivative, &added_master_gain);
-                printf("Values %.2f\n", added_proportional);
 
                 pitch_gain_p = base_pitch_gain_p + added_proportional;
                 pitch_gain_i = base_pitch_gain_i + added_integral;
@@ -332,54 +404,101 @@ void app_main() {
                 pid_set_integral_gain(&pitch_pid, pitch_gain_i * pitch_master_gain);
                 pid_set_derivative_gain(&pitch_pid, pitch_gain_d * pitch_master_gain);
                 pid_reset_integral_sum(&pitch_pid);
-
-                // PID_SetTunings(&pitch_pid2, pitch_gain_p * pitch_master_gain, pitch_gain_i * pitch_master_gain, pitch_gain_d * pitch_master_gain);
-
             }else if(strcmp(rx_type, "remoteSyncBase") == 0){
-                printf("Got sync base\n");
                 send_pid_base_info_to_remote();
-                printf("Done\n");
             }else if(strcmp(rx_type, "remoteSyncAdded") == 0){
-                printf("Got sync added\n");
                 send_pid_added_info_to_remote();
-                printf("Done\n");
             }
 
             rx_type[0] = '\0'; // Clear out the string
-            data_received = true;
         }
 
         // React to the data received from sensors and remote control ###########################################################################################################
-
         if(gyro_degrees[0] < 20 && gyro_degrees[0] > -20){
 
+            // Adjust the pitch if robot going too fast. Use the target pitch to know robots direction
+            double new_target_pitch = target_pitch;
+
+            // So the problem i have with this is that my sensor cannot tell the direction of the motion
+            // because it is not a quadrature sensor. I do not have the precision to attach a second sensor
+            // in such a way that it is slightly lagging behind every activation of the first sensor. The only
+            // way i can achieve this is to upgrade to a magnetic encoder. I may do that later in the project
+
+            // What i can do now though is use my diy optical encoder and infer the direction of the robot in
+            // some other way. If my robot is told to move forwards i can assume that the direction of the rpm
+            // is forwards also. If no move input is made i cannot assume anything.
+
+            // What i do is if the speed goes above what i like i start slowing it down with only pid with integral.
+            // I use integral because my encoder disk with holes is also small resolution, the integral can accumulate 
+            // even if the value doesn't change. This happens when the robot is told to move forward by remote.
+
+            // When remote stops saying move forward i use the previous information that it moved forward at some speed
+            // to make it slow down back to zero speed. This is what limits the pid the most. If i put too much gains on pid
+            // it will overshoot the 0 speed point start gaining speed again. At that point the slowing functionality only 
+            // amplifies the speed. So the integral is a cautious 0.015 and everything else is zero. 
+
+            // I also adjust the desired pitch and not add this pid to the error that is applied to the motors. This is because
+            // the pitch change can impact things in a more significant and predictable way. I dont need to have a new set of pid 
+            // settings for the pitch pid
+
+            if(max_rpm_on_pitch < wheel_rpm[0] && !slowing_lock){
+                // Check which direction to adjust to
+                if( new_target_pitch < 0){
+                    printf("ADJUSTING ");
+
+                    pid_set_desired_value(&wheel_rpm_pid, max_rpm_on_pitch);
+                    // more than zero so adjust back
+                    new_target_pitch = target_pitch - pid_get_error(&wheel_rpm_pid, wheel_rpm[0], esp_timer_get_time());
+
+                    // remember the heading
+                    last_robot_direction = 1;
+                }else if(new_target_pitch > 0){
+                    printf("ADJUSTING ");
+
+                    pid_set_desired_value(&wheel_rpm_pid, max_rpm_on_pitch);
+                    // less than zero so adjust forward
+                    new_target_pitch = target_pitch + pid_get_error(&wheel_rpm_pid, wheel_rpm[0], esp_timer_get_time());
+                    last_robot_direction = -1;
+                }
+            }else if(new_target_pitch != 0){
+                // When it is not going over the speed limit reset the integral so it doesn't stay wound up
+                pid_reset_integral_sum(&wheel_rpm_pid);
+            }
+
+            // Slow down the robot when the desired pitch goes to 0 and there was adjusting action before.
+            if(target_pitch == 0.0 && last_robot_direction != 0 && wheel_rpm[0] != 0){
+                printf("SLOWING ");
+                slowing_lock = true;
+                pid_set_desired_value(&wheel_rpm_pid, 0);
+                if(last_robot_direction == 1){
+                     new_target_pitch = target_pitch + pid_get_error(&wheel_rpm_pid, wheel_rpm[0], esp_timer_get_time());
+                }else if(last_robot_direction == -1){
+                    new_target_pitch = target_pitch -pid_get_error(&wheel_rpm_pid, wheel_rpm[0], esp_timer_get_time());
+                }
+            }else if(target_pitch == 0.0 && wheel_rpm[0] == 0){
+                last_robot_direction = 0;
+                slowing_lock = false;
+                pid_reset_integral_sum(&wheel_rpm_pid);
+            }
+
+            printf("PITCH TARGET, %6.2f, %6.2f, ", target_pitch, new_target_pitch);
+
+
             // Update pid targets by transforming remote input
-            // target_pitch = map_value(pitch, 0.0, 100.0, -20.0, 20.0);
-            // target_yaw = map_value(yaw, -20.0, 20.0, 0.0, 100.0);
-            pid_set_desired_value(&pitch_pid, target_pitch);
+            pid_set_desired_value(&pitch_pid, new_target_pitch);
             pid_set_desired_value(&yaw_pid, target_yaw);
 
-            float gyro_degrees_dead_zone_adjusted[3] = {0.0,0.0,0.0};
-            gyro_degrees_dead_zone_adjusted[0] = apply_dead_zone(gyro_degrees[0], 180.0, -180.0, target_dead_zone_percent);
-            gyro_degrees_dead_zone_adjusted[1] = apply_dead_zone(gyro_degrees[1], 180.0, -180.0, target_dead_zone_percent);
-            gyro_degrees_dead_zone_adjusted[2] = apply_dead_zone(gyro_degrees[2], 180.0, -180.0, target_dead_zone_percent);
-
-            error_pitch = pid_get_error(&pitch_pid, gyro_degrees_dead_zone_adjusted[0], esp_timer_get_time());
-            error_speed_A = pid_get_error(&wheel_speed_A_pid, wheel_speed[0], esp_timer_get_time());
-            error_speed_B = pid_get_error(&wheel_speed_B_pid, wheel_speed[1], esp_timer_get_time());
-            error_position_A = pid_get_error(&wheel_position_A_pid, wheel_position[0], esp_timer_get_time());
-            error_position_B = pid_get_error(&wheel_position_B_pid, wheel_position[1], esp_timer_get_time());
-            error_yaw = pid_get_error(&yaw_pid, gyro_degrees[2], esp_timer_get_time());
+            error_pitch = pid_get_error(&pitch_pid, gyro_degrees[0], esp_timer_get_time());
+            // error_position_A = pid_get_error(&wheel_position_A_pid, wheel_position[0], esp_timer_get_time());
+            // error_position_B = pid_get_error(&wheel_position_B_pid, wheel_position[1], esp_timer_get_time());
+            // Special case, dont want the pid to go crazy when robot goes from 179 to -179. Calculate own error
+            error_yaw = pid_get_error_own_error(&yaw_pid, -angle_difference(target_yaw, gyro_degrees[2]), esp_timer_get_time()); 
 
             float motor_A_control = (-error_pitch) - error_yaw + error_speed_A + error_position_A; 
             float motor_B_control = (-error_pitch) + error_yaw + error_speed_B + error_position_B;
 
             change_speed_motor_A(motor_A_control, 0);
             change_speed_motor_B(motor_B_control, 0);
-
-            optical_encoder_set_clockwise(optical_encoder_2_result , motor_A_control > 0);
-            optical_encoder_set_clockwise(optical_encoder_1_result , motor_B_control > 0);
-
         }else{
             change_speed_motor_A(0, 0);
             change_speed_motor_B(0, 0);
@@ -388,15 +507,17 @@ void app_main() {
         // Monitoring ###########################################################################################################################################################
 
         // printf("ACCEL, %6.2f, %6.2f, %6.2f, ", acceleration_data[0], acceleration_data[1], acceleration_data[2]);
-        printf("GYRO, %6.2f, %6.2f, %6.2f, ", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
-        printf("MAG, %6.2f, %6.2f, %6.2f, ", magnetometer_data[0], magnetometer_data[1], magnetometer_data[2]);
-        // printf("%6.5f %6.5f %6.5f", magnetometer_data[0], magnetometer_data[1], magnetometer_data[2]);
-        printf("\n"); 
+        printf("GYRO, %f, %f, %f, ", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
+        // printf("MAG, %f, %f, %f, ", magnetometer_data[0], magnetometer_data[1], magnetometer_data[2]);
+        printf("RPM, %6.2f, %6.2f, ", wheel_rpm[0], wheel_rpm[1]);
+        // printf("TARGET, %6.2f, %6.2f, ", target_pitch, target_yaw);
+        printf("\n"); // End the line after all the data has been printed. So that all data is on one line
 
-        handle_loop_timing();
+        handle_loop_timing(); // Make sure the loop has exact timing as specified in refresh rate
     }
 }
 
+// Switch magnetometer axis. x-> y and y->x
 void fix_mag_axis(float* magnetometer_data){
     float temp = 0.0;
     temp = magnetometer_data[0];
@@ -406,16 +527,18 @@ void fix_mag_axis(float* magnetometer_data){
     magnetometer_data[1] = -temp;
 }
 
+// Find the errors for the accelerometer and gyro
 void check_calibrations(){
     // Checking errors of mpu6050
     find_accelerometer_error(1000);
     find_gyro_error(300);
 
 
-    // TB6612 and power bank - A 31.5 - 2   B 26.9 - 2
-    // L298 and 2 x 18650 cells - A 69.8   B 70  // z Worked very good with above settings though, very smooth
-    // L298 and 3 x 18650 cells - A 52.5   B 52.5  
+    // Testing with different motor drivers
+    // TB6612 and power bank - A 31.5  B 26.9
     // TB6612 and 3 x 18650 cells - A 15.5  B 12.5  
+    // L298 and 2 x 18650 cells - A 69.8   B 70  // Worked very good with above settings though, very smooth
+    // L298 and 3 x 18650 cells - A 52.5   B 52.5  
 
 
     uint8_t movements_in_a_row = 5;
@@ -432,6 +555,7 @@ void check_calibrations(){
         change_speed_motor_A(0, 0); // sometimes the motor doesn't have enough leverage between steps of voltage
         vTaskDelay(250 / portTICK_RATE_MS);
 
+        // Use optical encoders to determine if it moved
         if(optical_encoder_get_count(optical_encoder_2_result) != 0 ){
             printf("Spin \n");
             optical_encoder_set_count(optical_encoder_2_result, 0);
@@ -456,6 +580,7 @@ void check_calibrations(){
         change_speed_motor_B(0, 0); // sometimes the motor doesn't have enough leverage between steps of voltage
         vTaskDelay(250 / portTICK_RATE_MS);
 
+        // Use optical encoders to determine if it moved
         if(optical_encoder_get_count(optical_encoder_1_result) != 0 ){
             printf("Spin \n");
             optical_encoder_set_count(optical_encoder_1_result, 0);
@@ -472,6 +597,7 @@ void check_calibrations(){
     change_speed_motor_B(0, 0);
 }
 
+// Abstract away initialization of sensor drivers
 void init_sensors(){
     // Init sensors
     printf("-----------------------------INITIALIZING MODULES...\n");
@@ -480,29 +606,36 @@ void init_sensors(){
     bool gy271 = init_gy271(GPIO_NUM_22, GPIO_NUM_21, false, true, hard_iron_correction, soft_iron_correction);
     init_TB6612(GPIO_NUM_33, GPIO_NUM_32, GPIO_NUM_25, GPIO_NUM_27, GPIO_NUM_26, GPIO_NUM_14);
     bool nrf24 = nrf24_init(SPI3_HOST, GPIO_NUM_17, GPIO_NUM_16);
-    optical_encoder_1_result = init_optical_encoder(GPIO_NUM_4, true, 0.2356, 20, 0.2);
-    optical_encoder_2_result = init_optical_encoder(GPIO_NUM_15, false, 0.2356, 20, 0.2);
+    optical_encoder_1_result = init_optical_encoder(GPIO_NUM_4, true, 0.2356, 30, 0.2);
+    optical_encoder_2_result = init_optical_encoder(GPIO_NUM_15, false, 0.2356, 30, 0.2);
 
     printf("-----------------------------INITIALIZING MODULES DONE... ");
+
     if (mpu6050 && gy271 && nrf24 && optical_encoder_1_result >= 0 && optical_encoder_2_result >= 0){
         printf("OK\n");
     }else{
         printf("NOT OK %d %d %d %d %d\n", mpu6050, gy271, nrf24, optical_encoder_1_result, optical_encoder_2_result);
+        return;
     }
 
     nrf24_rx_mode(tx_address, 10);
 }
 
+// Abstract away peripheral setup
 void init_esp32_peripherals(){
     init_spi3();
 }
 
+// initialize the initial time of the 
 void init_loop_timer(){
     // Init loop timer
     loop_start_time = esp_timer_get_time()/1000;
+
+    // There were some errors if i dont add a delay here. 
     vTaskDelay(1000 / portTICK_RATE_MS);
 }
 
+// Get the initial position of the robot so it is not confused when it gets into the loop
 void get_initial_position(){
     // Find the initial position in degrees and apply it to the gyro measurement integral
     // This will tell the robot which way to go to get the actual upward
@@ -512,22 +645,27 @@ void get_initial_position(){
     fix_mag_axis(magnetometer_data); // Switches around the x and the y to match mpu6050
 
     calculate_degrees_x_y(acceleration_data, &accelerometer_x_rotation, &accelerometer_y_rotation);
-    calculate_yaw(magnetometer_data, &magnetometer_z_rotation);
 
+    // Get a good raw yaw for calculations later
+    calculate_yaw(magnetometer_data, &magnetometer_z_rotation);
+    last_raw_yaw = magnetometer_z_rotation;
+
+    calculate_yaw_tilt_compensated(magnetometer_data, &magnetometer_z_rotation, accelerometer_x_rotation, accelerometer_y_rotation);
+
+    // Use accelerometer as the degrees are instantaneous. Gyro would need multiple loops.
     gyro_degrees[0] = accelerometer_x_rotation;
     gyro_degrees[1] = accelerometer_y_rotation;
-    gyro_degrees[2] = magnetometer_z_rotation;
+    gyro_degrees[2] = magnetometer_z_rotation; 
 
     printf("Initial location x: %.2f y: %.2f, z: %.2f\n", gyro_degrees[0], gyro_degrees[1], gyro_degrees[2]);
 
-
     // Set the desired yaw as the initial one
     target_yaw = gyro_degrees[2];
-
 }
 
 
-void extract_joystick_request_values(char *request, uint8_t request_size, uint8_t *throttle, uint8_t *yaw, uint8_t *pitch, uint8_t *roll)
+// Extract the values form a slash separated stirng into specific variables for motion control parameters 
+void extract_joystick_request_values(char *request, uint8_t request_size, uint8_t *throttle, uint8_t *yaw, uint8_t *roll, uint8_t *pitch)
 {
     // Skip the request type
     char* start = strchr(request, '/') + 1;
@@ -557,36 +695,37 @@ void extract_joystick_request_values(char *request, uint8_t request_size, uint8_
     end = strchr(start, '/');
     if(start == NULL || end == NULL ) return;
     length = end - start;
-    char pitch_string[length + 1];
-    strncpy(pitch_string, start, length);
-    pitch_string[length] = '\0';
-    *pitch = atoi(pitch_string);
-    //printf("'%s'\n", pitch_string);
-
-    start = strchr(end, '/') + 1;
-    end = strchr(start, '/');
-    if(start == NULL || end == NULL ) return;
-    length = end - start;
     char roll_string[length + 1];
     strncpy(roll_string, start, length);
     roll_string[length] = '\0';
     *roll = atoi(roll_string);
     //printf("'%s'\n", roll_string);
+
+    start = strchr(end, '/') + 1;
+    end = strchr(start, '/');
+    if(start == NULL || end == NULL ) return;
+    length = end - start;
+    char pitch_string[length + 1];
+    strncpy(pitch_string, start, length);
+    pitch_string[length] = '\0';
+    *pitch = atoi(pitch_string);
+    //printf("'%s'\n", pitch_string);
 }
 
+// Extract specifically the request type from a slash separated string
 void extract_request_type(char *request, uint8_t request_size, char *type_output){
     char* start = strchr(request, '/') + 1;
     char* end = strchr(start, '/');
     if(start == NULL || end == NULL ) return;
     int length = end - start;
-    //char type_string[length + 1];
+
     // You better be sure the length of the output string is big enough
     strncpy(type_output, start, length);
     type_output[length] = '\0';
     //printf("'%s'\n", type_output);
-
 }
 
+// Extract the values form a slash separated stirng into specific variables for pid control parameters 
 void extract_pid_request_values(char *request, uint8_t request_size, double *added_proportional, double *added_integral, double *added_derivative, double *added_master){
     // Skip the request type
     char* start = strchr(request, '/') + 1;
@@ -633,6 +772,7 @@ void extract_pid_request_values(char *request, uint8_t request_size, double *add
     //printf("'%s'\n", added_master);
 }
 
+// Delay the loop enough to match the refresh rate specified
 void handle_loop_timing(){
     loop_end_time = esp_timer_get_time()/1000;
     delta_loop_time = loop_end_time - loop_start_time;
@@ -644,13 +784,14 @@ void handle_loop_timing(){
     loop_start_time = esp_timer_get_time()/1000;
 }
 
+// Print out how much time has passed since the start of the loop. To debug issues with performance
 void track_time(){
-    uint32_t loop_end_time_temp = esp_timer_get_time()/1000;
     uint32_t delta_loop_time_temp = loop_end_time - loop_start_time;
 
     printf("%5d ms ", delta_loop_time_temp);
 }
 
+// Map value from a specified range to a new range
 double map_value(double value, double input_min, double input_max, double output_min, double output_max) {
     // Calculate the input and output ranges' lengths
     double input_range = input_max - input_min;
@@ -668,6 +809,7 @@ double map_value(double value, double input_min, double input_max, double output
     return output_value;
 }
 
+// Apply a dead zone to a value 
 double apply_dead_zone(double value, double max_value, double min_value, double dead_zone){
     double mid_point = (max_value + min_value) / 2;
     double half_range = (max_value - min_value) / 2;
@@ -689,62 +831,13 @@ double apply_dead_zone(double value, double max_value, double min_value, double 
     return return_value * half_range + mid_point; // scale back to original range
 }
 
-// void calculate_speeds_no_yaw(float* acceleration, float* gyro_degrees, float* speed, float refresh_rate){
-//     // Converting to radians
-//     float pitch_radian = gyro_degrees[1] * M_PI / 180.0;
-//     float roll_radian = gyro_degrees[0] * M_PI / 180.0;
-
-//     // Convert acceleration to m/s^2
-//     double acceleration_meters[] = {acceleration[0] * 9.81, acceleration[1] * 9.81, acceleration[2] * 9.81};
-
-//     // Calculate the projected acceleration along each axis
-//     double speed_x_big = acceleration_meters[0] + (9.81 * sin(pitch_radian));
-//     double speed_y_big = acceleration_meters[1] + (9.81 * sin(roll_radian));
-//     double speed_z_big = acceleration_meters[2] + (9.81 * cos(pitch_radian) * cos(roll_radian));
-
-//     // Calculating speed by integrating actual acceleration over time
-//     speed[0] += speed_x_big / refresh_rate;
-//     speed[1] += speed_y_big / refresh_rate;
-//     speed[2] += speed_z_big / refresh_rate;
-// }
-
-// void calculate_speeds(float* acceleration, float* gyro_degrees, float* speed, float refresh_rate){
-//     // Convert to radians
-//     float roll_radian = gyro_degrees[0] * M_PI / 180.0;
-//     float pitch_radian = gyro_degrees[1] * M_PI / 180.0;
-//     float yaw_radian = gyro_degrees[2] * M_PI / 180.0;
-
-//     // Convert acceleration to m/s^2 and adjust for gravity
-//     double acceleration_meters[] = {acceleration[0] * 9.81, acceleration[1] * 9.81, acceleration[2] * 9.81};
-
-//     double rotation_matrix[3][3];
-
-//     rotation_matrix[0][0] = cos(yaw_radian)*cos(pitch_radian); 
-//     rotation_matrix[0][1] = cos(yaw_radian)*sin(pitch_radian)*sin(roll_radian) - sin(yaw_radian)*cos(roll_radian);
-//     rotation_matrix[0][2] = cos(yaw_radian)*sin(pitch_radian)*cos(roll_radian) + sin(yaw_radian)*sin(roll_radian);
-
-//     rotation_matrix[1][0] = sin(yaw_radian)*cos(pitch_radian); 
-//     rotation_matrix[1][1] = sin(yaw_radian)*sin(pitch_radian)*sin(roll_radian) + cos(yaw_radian)*cos(roll_radian);
-//     rotation_matrix[1][2] = sin(yaw_radian)*sin(pitch_radian)*cos(roll_radian) - cos(yaw_radian)*sin(roll_radian);
-
-//     rotation_matrix[2][0] = -sin(pitch_radian); 
-//     rotation_matrix[2][1] = cos(pitch_radian)*sin(roll_radian); 
-//     rotation_matrix[2][2] = cos(pitch_radian)*cos(roll_radian); 
-
-//     double speed_x_big = rotation_matrix[0][0] * acceleration_meters[0] + rotation_matrix[0][1] * acceleration_meters[1] + rotation_matrix[0][2] * acceleration_meters[2]; 
-//     double speed_y_big = rotation_matrix[1][3] * acceleration_meters[0] + rotation_matrix[1][4] * acceleration_meters[1] + rotation_matrix[1][5] * acceleration_meters[2]; 
-//     double speed_z_big = rotation_matrix[2][6] * acceleration_meters[0] + rotation_matrix[2][7] * acceleration_meters[1] + rotation_matrix[2][8] * acceleration_meters[2]; 
-
-//     speed[0] += speed_x_big / refresh_rate;
-//     speed[1] += speed_y_big / refresh_rate;
-//     speed[2] += speed_z_big / refresh_rate;
-// }
-
-
+// Switch to transmit mode and send out a the base pid values to the remote
 void send_pid_base_info_to_remote(){
     nrf24_tx_mode(tx_address, 10);
+    // Delay a bit to avoid problem
     vTaskDelay(250 / portTICK_RATE_MS);
 
+    // Make a slash separated value
     char *string = generate_message_pid_values_nrf24(
         base_pitch_gain_p, 
         base_pitch_gain_i, 
@@ -752,21 +845,28 @@ void send_pid_base_info_to_remote(){
         base_pitch_master_gain
     );
     
+
+    // The remote always receives data as a gibberish with corrupted characters. Sending many of them will mean the remote can reconstruct the message
+    // And no crc check did not work, i tried.
     for (size_t i = 0; i < 100; i++)
     {
         if(!nrf24_transmit(string)){
-            printf("FAILED\n");
+            printf("FAILED\n"); // Very djank
         }
     }
     free(string);
     
+    // Switch back to receiver mode
     nrf24_rx_mode(tx_address, 10);
 }
 
+// Switch to transmit mode and send out a the added  pid values to the remote
 void send_pid_added_info_to_remote(){
     nrf24_tx_mode(tx_address, 10);
+    // Delay a bit to avoid problem
     vTaskDelay(250 / portTICK_RATE_MS);
 
+    // Make a slash separated value
     char *string = generate_message_pid_values_nrf24(
         added_pitch_gain_p, 
         added_pitch_gain_i, 
@@ -774,22 +874,27 @@ void send_pid_added_info_to_remote(){
         added_pitch_master_gain
     );
     
+    // The remote always receives data as a gibberish with corrupted characters. Sending many of them will mean the remote can reconstruct the message
+    // And no crc check did not work, i tried.
     for (size_t i = 0; i < 200; i++)
     {
         if(!nrf24_transmit(string)){
-            printf("FAILED\n");
+            printf("FAILED\n"); // Very djank
         }
     }
     free(string);
     
+    // Switch back to receiver mode
     nrf24_rx_mode(tx_address, 10);
 }
 
 char* generate_message_pid_values_nrf24(double base_proportional, double base_integral, double base_derivative, double base_master){
     // calculate the length of the resulting string
+
+    // the s is there for reasons... I just ran out of space on the 32 byte buffer for sending. It was originally supposed to be a full name
     int length = snprintf(
         NULL, 
-        0, 
+        0,
         "/s/%.2f/%.2f/%.2f/%.2f/  ", 
         base_proportional, 
         base_integral, 

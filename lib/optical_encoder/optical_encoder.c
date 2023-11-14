@@ -131,6 +131,10 @@ double optical_encoder_get_hertz(int8_t encoder_id, double max, double min){
     }
 }
 
+double optical_encoder_get_rpm(int8_t encoder_id, double max, double min){
+    return optical_encoder_get_hertz(encoder_id, max/60.0, min/60.0) * 60;
+}
+
 // Check if value stale
 bool optical_encoder_check_if_value_bad(int8_t encoder_id){
 

@@ -93,4 +93,122 @@ ax.set_zlabel('Z [uT]')
 # plt.ylabel("G's")
 # plt.grid()
 
+
+# testData = np.genfromtxt('./data.txt', delimiter='\t')
+
+# pp = testData[:, 0]
+# pi = testData[:, 1]
+# pd = testData[:, 2]
+
+# epitch = testData[:, 3]
+# eyaw = testData[:, 4]
+# etotal = testData[:, 5]
+
+# acx = testData[:, 6]
+# acy = testData[:, 7]
+# acz = testData[:, 8]
+
+# gcx = testData[:, 9]
+# gcy = testData[:, 10]
+# gcz = testData[:, 11]
+
+# plt.figure()
+# plt.plot(pp,label='P')
+# plt.plot(pi,label='I')
+# plt.plot(pd,label='D')
+# plt.legend(loc='upper left', ncol=3)
+# plt.xlabel('Time')
+# plt.ylabel("G's")
+# plt.grid()
+
+# plt.figure()
+# plt.plot(epitch,label='error_pitch')
+# plt.plot(eyaw,label='error_yaw')
+# plt.plot(etotal,label='error_total')
+# plt.legend(loc='upper left', ncol=3)
+# plt.xlabel('Time')
+# plt.ylabel("G's")
+# plt.grid()
+
+# plt.figure()
+# plt.plot(acx,label='accelerometer_X')
+# plt.plot(acy,label='accelerometer_Y')
+# plt.plot(acz,label='accelerometer_Z')
+# plt.legend(loc='upper left', ncol=3)
+# plt.xlabel('Time')
+# plt.ylabel("G's")
+# plt.grid()
+
+
+# plt.figure()
+# plt.plot(gcx,label='gyro_X')
+# plt.plot(gcy,label='gyro_Y')
+# plt.plot(gcz,label='gyro_Z')
+# plt.legend(loc='upper left', ncol=3)
+# plt.xlabel('Time')
+# plt.ylabel("G's")
+# plt.grid()
+
+
+
+
+
+
+
+
+testData = np.genfromtxt('./data2.txt', delimiter='\t')
+
+# pp = testData[:, 0]
+# pi = testData[:, 1]
+# pd = testData[:, 2]
+# 
+# epitch = testData[:, 3]
+# eyaw = testData[:, 4]
+# etotal = testData[:, 5]
+# 
+# acx = testData[:, 6]
+# acy = testData[:, 7]
+# acz = testData[:, 8]
+
+gcx = testData[:, 0]
+gcy = testData[:, 1]
+gcz = testData[:, 2]
+
+# plt.figure()
+# plt.plot(pp,label='P')
+# plt.plot(pi,label='I')
+# plt.plot(pd,label='D')
+# plt.legend(loc='upper left', ncol=3)
+# plt.xlabel('Time')
+# plt.ylabel("G's")
+# plt.grid()
+
+# plt.figure()
+# plt.plot(epitch,label='error_pitch')
+# plt.plot(eyaw,label='error_yaw')
+# plt.plot(etotal,label='error_total')
+# plt.legend(loc='upper left', ncol=3)
+# plt.xlabel('Time')
+# plt.ylabel("G's")
+# plt.grid()
+
+# plt.figure()
+# plt.plot(acx,label='accelerometer_X')
+# plt.plot(acy,label='accelerometer_Y')
+# plt.plot(acz,label='accelerometer_Z')
+# plt.legend(loc='upper left', ncol=3)
+# plt.xlabel('Time')
+# plt.ylabel("G's")
+# plt.grid()
+
+
+plt.figure()
+plt.plot(gcx,label='gyro_X')
+plt.plot(gcy,label='gyro_Y')
+plt.plot(gcz,label='gyro_Z')
+plt.legend(loc='upper left', ncol=3)
+plt.xlabel('Time')
+plt.ylabel("G's")
+plt.grid()
+
 plt.show()
