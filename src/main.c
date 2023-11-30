@@ -21,7 +21,6 @@
 #include "../lib/util/ned_coordinates/ned_coordinates.h"
 #include "../lib/util/spi/spi.h"
 #include "../lib/pid/pid.h"
-#include "../lib/pid2/PID_V1.h"
 
 // Switches the magnetometer axis to be like accelerometer and gyro
 void fix_mag_axis(float* magnetometer_data);
