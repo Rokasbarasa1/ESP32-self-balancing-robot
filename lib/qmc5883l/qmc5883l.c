@@ -1,4 +1,4 @@
-#include "./gy271.h"
+#include "./qmc5883l.h"
 
 #define I2C_MASTER_NUM              0                          /*!< I2C master i2c port number, the number of i2c peripheral interfaces available will depend on the chip */
 #define I2C_MASTER_FREQ_HZ          400000                     /*!< I2C master clock frequency */
@@ -7,7 +7,7 @@
 #define I2C_MASTER_TIMEOUT_MS       1000
 
 
-#define GY271_I2C_ID 0x0D
+#define qmc5883l_I2C_ID 0x0D
 #define ID_REG 0x0D
 #define ID_VALUE 0b11111111
 #define CONTROL1_REG 0x09
@@ -26,7 +26,7 @@ volatile float m_soft_iron[3][3] = {
     {0, 0, 1}};
 
 // max value output is at 200 Hz
-bool init_gy271(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_calibration, float hard_iron[3],  float soft_iron[3][3]){
+bool init_qmc5883l(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_calibration, float hard_iron[3],  float soft_iron[3][3]){
 
     if(initialize_i2c){
         i2c_config_t conf = {
@@ -62,7 +62,7 @@ bool init_gy271(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_cali
 
     i2c_master_write_read_device(
         I2C_MASTER_NUM, 
-        GY271_I2C_ID, 
+        qmc5883l_I2C_ID, 
         test_register, 
         1, 
         test_data, 
@@ -73,7 +73,7 @@ bool init_gy271(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_cali
     // Check if the id value is as it should be
     if (test_data[0] != ID_VALUE)
     {
-        printf("GY271 initialization failed: %d != %d\n", test_data[0], ID_VALUE);
+        printf("qmc5883l initialization failed: %d != %d\n", test_data[0], ID_VALUE);
         return false;
     }
 
@@ -81,7 +81,7 @@ bool init_gy271(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_cali
     uint8_t settings2[] = {CONTROL2_REG, INTERRUPT_PIN_DISABLED};
     i2c_master_write_to_device(
         I2C_MASTER_NUM, 
-        GY271_I2C_ID, 
+        qmc5883l_I2C_ID, 
         settings2, 
         2, 
         I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
@@ -90,22 +90,22 @@ bool init_gy271(uint scl_pin, uint sda_pin, bool initialize_i2c, bool apply_cali
     uint8_t settings1[] = {CONTROL1_REG, OS_RATIO_512|MEASURE_SCALE_2G|ODR_50HZ|MODE_CONTINUOUS};
     i2c_master_write_to_device(
         I2C_MASTER_NUM, 
-        GY271_I2C_ID, 
+        qmc5883l_I2C_ID, 
         settings1, 
         2, 
         I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
     
-    printf("GY271 initialized\n");
+    printf("qmc5883l initialized\n");
     return true;
 }
 
-void gy271_magnetometer_readings_micro_teslas(float *data){
+void qmc5883l_magnetometer_readings_micro_teslas(float *data){
     uint8_t data_register[] = {OUTPUT_DATA1_REG};
     uint8_t retrieved_data[] = {0, 0, 0, 0, 0, 0};
 
     i2c_master_write_read_device(
         I2C_MASTER_NUM, 
-        GY271_I2C_ID, 
+        qmc5883l_I2C_ID, 
         data_register, 
         1, 
         retrieved_data, 

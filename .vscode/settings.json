@@ -46,7 +46,7 @@
         "pid_v1.h": "c",
         "*.tcc": "cpp",
         "*.ipp": "c",
-        "gy271.h": "c",
+        "qmc5883l.h": "c",
         "i2c.h": "c",
         "memory": "cpp",
         "future": "cpp"

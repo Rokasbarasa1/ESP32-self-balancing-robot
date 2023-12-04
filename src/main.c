@@ -13,7 +13,7 @@
 // Drivers
 #include "../lib/mpu6050/mpu6050.h"
 #include "../lib/TB6612/TB6612.h"
-#include "../lib/gy271_qmc5883l/gy271.h"
+#include "../lib/qmc5883l/qmc5883l.h"
 #include "../lib/nrf24l01/nrf24l01.h"
 #include "../lib/optical_encoder/optical_encoder.h"
 
@@ -67,7 +67,7 @@ double apply_dead_zone(double value, double max_value, double min_value, double 
  */
 
 /**
- * GY271
+ * qmc5883l
  * 
  * GPIO22 SCL
  * GPIO21 SDA
@@ -254,7 +254,7 @@ void app_main() {
         // Read sensor data ######################################################################################################################
         mpu6050_get_accelerometer_readings_gravity(acceleration_data);
         mpu6050_get_gyro_readings_dps(gyro_angular);
-        gy271_magnetometer_readings_micro_teslas(magnetometer_data);
+        qmc5883l_magnetometer_readings_micro_teslas(magnetometer_data);
         // wheel_speed[0] = optical_encoder_get_hertz(optical_encoder_2_result, 2.55, -2.55);
         // wheel_speed[1] = optical_encoder_get_hertz(optical_encoder_1_result, 2.55, -2.55);
         // wheel_position[0] = optical_encoder_get_count(optical_encoder_2_result);
@@ -582,7 +582,7 @@ void init_sensors(){
     printf("-----------------------------INITIALIZING MODULES...\n");
 
     bool mpu6050 = init_mpu6050(GPIO_NUM_22, GPIO_NUM_21, true, true, accelerometer_correction, gyro_correction, complementary_ratio);
-    bool gy271 = init_gy271(GPIO_NUM_22, GPIO_NUM_21, false, true, hard_iron_correction, soft_iron_correction);
+    bool qmc5883l = init_qmc5883l(GPIO_NUM_22, GPIO_NUM_21, false, true, hard_iron_correction, soft_iron_correction);
     init_TB6612(GPIO_NUM_33, GPIO_NUM_32, GPIO_NUM_25, GPIO_NUM_27, GPIO_NUM_26, GPIO_NUM_14);
     bool nrf24 = nrf24_init(SPI3_HOST, GPIO_NUM_17, GPIO_NUM_16);
     optical_encoder_1_result = init_optical_encoder(GPIO_NUM_4, true, 0.2356, 30, 0.2);
@@ -590,10 +590,10 @@ void init_sensors(){
 
     printf("-----------------------------INITIALIZING MODULES DONE... ");
 
-    if (mpu6050 && gy271 && nrf24 && optical_encoder_1_result >= 0 && optical_encoder_2_result >= 0){
+    if (mpu6050 && qmc5883l && nrf24 && optical_encoder_1_result >= 0 && optical_encoder_2_result >= 0){
         printf("OK\n");
     }else{
-        printf("NOT OK %d %d %d %d %d\n", mpu6050, gy271, nrf24, optical_encoder_1_result, optical_encoder_2_result);
+        printf("NOT OK %d %d %d %d %d\n", mpu6050, qmc5883l, nrf24, optical_encoder_1_result, optical_encoder_2_result);
         return;
     }
 
@@ -620,7 +620,7 @@ void get_initial_position(){
     // This will tell the robot which way to go to get the actual upward
     mpu6050_get_accelerometer_readings_gravity(acceleration_data);
     mpu6050_get_gyro_readings_dps(gyro_angular);
-    gy271_magnetometer_readings_micro_teslas(magnetometer_data);
+    qmc5883l_magnetometer_readings_micro_teslas(magnetometer_data);
     fix_mag_axis(magnetometer_data); // Switches around the x and the y to match mpu6050
 
     calculate_degrees_x_y(acceleration_data, &accelerometer_x_rotation, &accelerometer_y_rotation);
