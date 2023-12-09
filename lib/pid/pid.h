@@ -1,8 +1,7 @@
 #pragma once
 #include "stdint.h"
 
-struct pid
-{
+struct pid{
     double m_gain_proportional;
     double m_gain_integral;
     double m_gain_derivative;
@@ -23,7 +22,8 @@ struct pid pid_init(
     int64_t time,
     double max_value,
     double min_value,
-    uint8_t stop_windup);
+    uint8_t stop_windup
+);
 double pid_get_error(struct pid* pid_instance, double value, int64_t time);
 double pid_get_error_own_error(struct pid* pid_instance, double error, int64_t time);
 void pid_set_desired_value(struct pid* pid_instance, double value);

@@ -11,7 +11,7 @@
  * @param gain_integral 
  * @param gain_derivative 
  * @param desired_value value that you want to achieve
- * @param time the current time in ticks. Stm32 tick
+ * @param time the current time in ticks. esp32 tick
  * @return struct pid 
  */
 struct pid pid_init(
